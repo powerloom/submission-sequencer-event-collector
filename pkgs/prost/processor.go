@@ -47,9 +47,10 @@ func ProcessEvents(block *types.Block) {
 
 	// Process the logs for the current block
 	for _, vLog := range logs {
+		// Check the event signature and handle the `EpochReleased` event
 		switch vLog.Topics[0].Hex() {
 		case ContractABI.Events["EpochReleased"].ID.Hex():
-			// Parse the `EpochReleased` event
+			// Parse the `EpochReleased` event from the log
 			releasedEvent, err := Instance.ParseEpochReleased(vLog)
 			if err != nil {
 				clients.SendFailureNotification("Epoch release parse error: ", err.Error(), time.Now().String(), "High")
@@ -57,21 +58,23 @@ func ProcessEvents(block *types.Block) {
 				continue
 			}
 
-			// Check if the DataMarketAddress matches
+			// Ensure the DataMarketAddress in the event matches the configured DataMarketAddress
 			if releasedEvent.DataMarketAddress.Hex() == config.SettingsObj.DataMarketAddress {
 				log.Debugf("Epoch Released at block %d: %s\n", block.Header().Number, releasedEvent.EpochId.String())
 
-				// Fetch the current epoch from the Redis
+				// Fetch the current epoch ID from Redis
 				currentEpochID, err := redis.Get(context.Background(), pkgs.CurrentEpoch)
 				if err != nil {
 					log.Debugln("Failed to fetch the current epoch from Redis: ", err.Error())
 					continue
 				}
 
-				// Update Redis if a new epoch has been released
+				// If the new epoch is greater than the current epoch, update Redis
 				if currentEpochID < releasedEvent.EpochId.String() {
-					newEpochID := releasedEvent.EpochId.String()
-					if err := redis.Set(context.Background(), pkgs.CurrentEpoch, newEpochID, 0); err != nil {
+					newEpochID := releasedEvent.EpochId
+
+					// Update Redis with the new current epoch ID
+					if err := redis.Set(context.Background(), pkgs.CurrentEpoch, newEpochID.String(), 0); err != nil {
 						log.Errorf("Failed to update current epoch in Redis: %s", err)
 						continue
 					}
@@ -79,41 +82,47 @@ func ProcessEvents(block *types.Block) {
 					// Calculate submission limit based on the current block number
 					submissionLimit := UpdateSubmissionLimit(new(big.Int).Set(block.Number()))
 
-					// Wait for blocks until (block number + submission limit)
-					go waitForBlocks(releasedEvent.EpochId, submissionLimit, block)
+					// Determine the end block number by adding the submission limit to the current block number
+					endBlockNum := new(big.Int).Add(block.Number(), submissionLimit)
+
+					// Cache the submission limit marker for the new epoch
+					epochEndBlockMarkers[newEpochID] = endBlockNum.Int64()
 				}
 			}
 		}
 	}
 }
 
-func waitForBlocks(epochID, submissionLimit *big.Int, startBlock *types.Block) {
-	// Calculate the end block number
-	endBlockNum := new(big.Int).Add(startBlock.Number(), submissionLimit)
+func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
+	// Get the current block number
+	currentBlockNum := currentBlock.Number().Int64()
 
-	// Initialize with the starting block header
-	headers := []string{startBlock.Header().Hash().Hex()}
+	// Iterate through the epoch-end block markers
+	for epochID, endBlockNum := range epochEndBlockMarkers {
+		// Check if the current block number has reached or exceeded the end block number for an epoch
+		if currentBlockNum >= endBlockNum {
+			log.Infof("Triggering batch preparation for epoch %s", epochID.String())
 
-	log.Infof("Waiting for blocks from %d to %d for epoch %s", startBlock.Number().Uint64(), endBlockNum.Uint64(), epochID.String())
+			// Trigger the batch preparation logic
+			go triggerBatchPreparation(epochID, currentBlockNum, endBlockNum)
 
-	// Wait until the current block number reaches the end block number
-	for {
-		currentBlock, err := Client.BlockByNumber(context.Background(), nil) // Fetch the latest block to get the current block number
-		if err != nil {
-			log.Errorf("Error fetching latest block: %s", err)
-			time.Sleep(100 * time.Millisecond) // Sleep briefly before retrying to prevent spamming
-			continue
+			// Remove the marker for this epoch once processed
+			delete(epochEndBlockMarkers, epochID)
 		}
+	}
+}
 
-		if currentBlock.Number().Cmp(endBlockNum) >= 0 {
-			break // Exit loop when we reach or exceed the end block number
-		}
+func triggerBatchPreparation(epochID *big.Int, startBlockNum, endBlockNum int64) {
+	// Initialize a slice for storing the headers
+	headers := make([]string, 0)
 
-		// Add current block header to the list
-		headers = append(headers, currentBlock.Header().Hash().Hex())
+	// Iterate over the block numbers and fetch the headers
+	for blockNum := startBlockNum; blockNum <= endBlockNum; blockNum++ {
+		// Fetch the block hash
+		blockHash := blockNumberToHash[blockNum]
 
-		// Sleep briefly before checking again.
-		time.Sleep(time.Duration(config.SettingsObj.BlockTime*500) * time.Millisecond)
+		// Add the block header to the list
+		headers = append(headers, blockHash.Hex())
 	}
 
 	log.Debugf("Collected headers for epoch %s: %v", epochID.String(), headers)

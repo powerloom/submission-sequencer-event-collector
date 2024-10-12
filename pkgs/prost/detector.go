@@ -9,7 +9,13 @@ import (
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	blockNumberToHash    = make(map[int64]common.Hash) // Stores block numbers and their corresponding hashes [Block Number -> Block Hash]
+	epochEndBlockMarkers = make(map[*big.Int]int64)    // Tracks end block number for each epoch [EpochID -> End Block Number]
 )
 
 // StartFetchingBlocks continuously fetches blocks and processes events
@@ -56,10 +62,16 @@ func StartFetchingBlocks() {
 
 			log.Debugf("Processing block: %d", blockNum)
 
-			// Process events in the block.
+			// Check and trigger batch preparation if submission limit is reached for any epoch
+			checkAndTriggerBatchPreparation(block)
+
+			// Process the events in the block
 			ProcessEvents(block)
 
-			// Update and store the current block number in redis
+			// Add block number and its hash to the cache
+			blockNumberToHash[blockNum] = block.Hash()
+
+			// Update current block number and store it in Redis
 			currentBlockNum = blockNum
 			if err := redis.Set(context.Background(), pkgs.CurrentBlockNumber, strconv.FormatInt(currentBlockNum, 10), 0); err != nil {
 				log.Errorf("Failed to update current block number in Redis: %s", err)
