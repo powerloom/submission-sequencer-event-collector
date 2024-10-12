@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	blockNumberToHash    = make(map[int64]common.Hash) // Stores block numbers and their corresponding hashes [Block Number -> Block Hash]
-	epochEndBlockMarkers = make(map[*big.Int]int64)    // Tracks end block number for each epoch [EpochID -> End Block Number]
+	blockNumberToHash    = make(map[int64]common.Hash)     // Stores block numbers and their corresponding hashes [Block Number -> Block Hash]
+	epochEndBlockMarkers = make(map[*big.Int]EpochDetails) // Tracks the details of each epoch, where the [EpochID -> EpochDetails]
 )
 
 // StartFetchingBlocks continuously fetches blocks and processes events

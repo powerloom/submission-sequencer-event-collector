@@ -19,6 +19,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type EpochDetails struct {
+	StartBlockNumber int64
+	EndBlockNumber   int64
+}
+
 type SubmissionDetails struct {
 	EpochID    *big.Int
 	ProjectMap map[string][]string // ProjectID -> SubmissionKeys
@@ -86,7 +91,10 @@ func ProcessEvents(block *types.Block) {
 					endBlockNum := new(big.Int).Add(block.Number(), submissionLimit)
 
 					// Cache the submission limit marker for the new epoch
-					epochEndBlockMarkers[newEpochID] = endBlockNum.Int64()
+					epochEndBlockMarkers[newEpochID] = EpochDetails{
+						StartBlockNumber: block.Number().Int64(),
+						EndBlockNumber:   endBlockNum.Int64(),
+					}
 				}
 			}
 		}
@@ -98,13 +106,13 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 	currentBlockNum := currentBlock.Number().Int64()
 
 	// Iterate through the epoch-end block markers
-	for epochID, endBlockNum := range epochEndBlockMarkers {
-		// Check if the current block number has reached or exceeded the end block number for an epoch
-		if currentBlockNum >= endBlockNum {
+	for epochID, epochDetails := range epochEndBlockMarkers {
+		// Check if the current block number has reached the end block number for an epoch
+		if currentBlockNum == epochDetails.EndBlockNumber {
 			log.Infof("Triggering batch preparation for epoch %s", epochID.String())
 
 			// Trigger the batch preparation logic
-			go triggerBatchPreparation(epochID, currentBlockNum, endBlockNum)
+			go triggerBatchPreparation(epochID, epochDetails.StartBlockNumber, currentBlockNum)
 
 			// Remove the marker for this epoch once processed
 			delete(epochEndBlockMarkers, epochID)
