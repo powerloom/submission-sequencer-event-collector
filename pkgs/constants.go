@@ -13,4 +13,6 @@ const (
 	CollectorKey       = "SnapshotCollector"
 	CurrentBlockNumber = "CurrentBlockNumber"
 	CurrentEpoch       = "CurrentEpoch"
+	EpochMarkerKey     = "EpochMarkerKey"
+	BlockNumberKey     = "BlockNumberKey"
 )

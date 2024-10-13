@@ -29,11 +29,14 @@ type SubmissionDetails struct {
 	ProjectMap map[string][]string // ProjectID -> SubmissionKeys
 }
 
+// ProcessEvents processes logs for the given block and handles the EpochReleased event
 func ProcessEvents(block *types.Block) {
 	var logs []types.Log
 	var err error
 
 	hash := block.Hash()
+
+	// Create a filter query to fetch logs for the block
 	filterQuery := ethereum.FilterQuery{
 		BlockHash: &hash,
 		Addresses: []common.Address{common.HexToAddress(config.SettingsObj.ContractAddress)},
@@ -70,7 +73,8 @@ func ProcessEvents(block *types.Block) {
 				// Fetch the current epoch ID from Redis
 				currentEpochID, err := redis.Get(context.Background(), pkgs.CurrentEpoch)
 				if err != nil {
-					log.Debugln("Failed to fetch the current epoch from Redis: ", err.Error())
+					clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Failed to fetch current epoch from Redis: %s", err.Error()), time.Now().String(), "High")
+					log.Errorf("Failed to fetch the current epoch from Redis: %s", err.Error())
 					continue
 				}
 
@@ -80,7 +84,7 @@ func ProcessEvents(block *types.Block) {
 
 					// Update Redis with the new current epoch ID
 					if err := redis.Set(context.Background(), pkgs.CurrentEpoch, newEpochID.String(), 0); err != nil {
-						log.Errorf("Failed to update current epoch in Redis: %s", err)
+						log.Errorf("Failed to update current epoch in Redis: %s", err.Error())
 						continue
 					}
 
@@ -90,10 +94,23 @@ func ProcessEvents(block *types.Block) {
 					// Determine the end block number by adding the submission limit to the current block number
 					endBlockNum := new(big.Int).Add(block.Number(), submissionLimit)
 
-					// Cache the submission limit marker for the new epoch
-					epochEndBlockMarkers[newEpochID] = EpochDetails{
+					// Prepare the epoch details and save them in Redis
+					epochDetails := EpochDetails{
 						StartBlockNumber: block.Number().Int64(),
 						EndBlockNumber:   endBlockNum.Int64(),
+					}
+
+					epochDetailsJSON, err := json.Marshal(epochDetails)
+					if err != nil {
+						clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Failed to marshal epoch details: %s", err.Error()), time.Now().String(), "High")
+						log.Errorf("Failed to marshal epoch details: %s", err)
+						continue
+					}
+
+					// Save the epoch details in Redis using the epoch marker key
+					err = redis.Set(context.Background(), redis.EpochMarkerKey(newEpochID.String()), string(epochDetailsJSON), 0)
+					if err != nil {
+						log.Errorf("Failed to store epoch marker in Redis: %s", err)
 					}
 				}
 			}
@@ -105,31 +122,69 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 	// Get the current block number
 	currentBlockNum := currentBlock.Number().Int64()
 
-	// Iterate through the epoch-end block markers
-	for epochID, epochDetails := range epochEndBlockMarkers {
-		// Check if the current block number has reached the end block number for an epoch
-		if currentBlockNum == epochDetails.EndBlockNumber {
-			log.Infof("Triggering batch preparation for epoch %s", epochID.String())
+	// Fetch all epoch marker keys from Redis
+	redisKeys, err := redis.RedisClient.Keys(context.Background(), fmt.Sprintf("%s.*", pkgs.EpochMarkerKey)).Result()
+	if err != nil {
+		log.Errorf("Failed to fetch epoch markers from Redis: %s", err)
+		return
+	}
 
-			// Trigger the batch preparation logic
+	for _, key := range redisKeys {
+		// Retrieve the epoch details from Redis
+		epochDetailsJSON, err := redis.Get(context.Background(), key)
+		if err != nil {
+			log.Errorf("Failed to fetch epoch details from Redis: %s", err.Error())
+			continue
+		}
+
+		var epochDetails EpochDetails
+		if err := json.Unmarshal([]byte(epochDetailsJSON), &epochDetails); err != nil {
+			log.Errorf("Failed to unmarshal epoch details: %s", err.Error())
+			continue
+		}
+
+		// Check if the current block number matches the end block number for this epoch
+		if currentBlockNum == epochDetails.EndBlockNumber {
+			log.Infof("Triggering batch preparation for epoch %s", key)
+
+			// Extract epoch ID by trimming the prefix from the Redis key
+			epochIDStr := strings.TrimPrefix(key, fmt.Sprintf("%s.", pkgs.EpochMarkerKey))
+
+			// Convert the epoch ID string to big.Int for further processing
+			epochID, ok := big.NewInt(0).SetString(epochIDStr, 10)
+			if !ok {
+				log.Errorf("Failed to convert epochID %s to big.Int", epochIDStr)
+				return
+			}
+
+			// Trigger batch preparation logic for the current epoch
 			go triggerBatchPreparation(epochID, epochDetails.StartBlockNumber, currentBlockNum)
 
-			// Remove the marker for this epoch once processed
-			delete(epochEndBlockMarkers, epochID)
+			// Remove epoch marker from Redis after processing
+			if err := redis.Delete(context.Background(), key); err != nil {
+				log.Errorf("Failed to delete epoch marker from Redis: %s", err.Error())
+			}
 		}
 	}
 }
 
 func triggerBatchPreparation(epochID *big.Int, startBlockNum, endBlockNum int64) {
-	// Initialize a slice for storing the headers
+	// Initialize a slice to store block headers (block hashes)
 	headers := make([]string, 0)
 
-	// Iterate over the block numbers and fetch the headers
+	// Iterate through the block numbers and fetch the block headers (hashes)
 	for blockNum := startBlockNum; blockNum <= endBlockNum; blockNum++ {
-		// Fetch the block hash
-		blockHash := blockNumberToHash[blockNum]
+		// Generate the Redis key for the current block number
+		blockHashVal, err := redis.Get(context.Background(), redis.BlockNumberKey(blockNum))
+		if err != nil {
+			log.Errorf("Failed to fetch block hash for block number %d: %s", blockNum, err.Error())
+			continue // Skip this block and move to the next
+		}
 
-		// Add the block header to the list
+		// Convert the block hash from string to common.Hash type
+		blockHash := common.HexToHash(blockHashVal)
+
+		// Add the block hash to the headers slice
 		headers = append(headers, blockHash.Hex())
 	}
 
