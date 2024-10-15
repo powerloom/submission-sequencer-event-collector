@@ -11,6 +11,7 @@ import (
 var SettingsObj *Settings
 
 type Settings struct {
+	// NOTE: what is this? PROST RPC URL? Where is it being loaded from env?
 	ClientUrl                 string
 	ContractAddress           string
 	RedisHost                 string

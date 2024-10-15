@@ -42,7 +42,9 @@ func StartFetchingBlocks() {
 		latestBlockNum := latestBlock.Number().Int64()
 
 		// Process all blocks from the currentBlockNum to the latest block
+		// NOTE: this can potentially cause a flood of batch preparation requests if the last processed block is very old
 		for blockNum := currentBlockNum + 1; blockNum <= latestBlockNum; blockNum++ {
+			// NOTE: retry appropriately
 			block, err := Client.BlockByNumber(context.Background(), big.NewInt(blockNum))
 			if err != nil {
 				log.Errorf("Failed to fetch block %d: %s", blockNum, err)
@@ -57,8 +59,9 @@ func StartFetchingBlocks() {
 			log.Debugf("Processing block: %d", blockNum)
 
 			// Check and trigger batch preparation if submission limit is reached for any epoch
+			// NOTE: cant this be run async as a go routine?
 			checkAndTriggerBatchPreparation(block)
-
+			// NOTE: and this one as well?
 			// Process the events in the block
 			ProcessEvents(block)
 

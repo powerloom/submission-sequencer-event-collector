@@ -46,7 +46,7 @@ func ProcessEvents(block *types.Block) {
 		logs, err = Client.FilterLogs(context.Background(), filterQuery)
 		return err
 	}
-
+	// NOTE: use retry based eth client calls like the following
 	if err = backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
 		log.Errorln("Error fetching logs: ", err.Error())
 		clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Error fetching logs: %s", err.Error()), time.Now().String(), "High")
@@ -71,7 +71,10 @@ func ProcessEvents(block *types.Block) {
 				log.Debugf("Epoch Released at block %d: %s\n", block.Header().Number, releasedEvent.EpochId.String())
 
 				// Fetch the current epoch ID from Redis
+				// NOTE: why is this important?
 				currentEpochID, err := redis.Get(context.Background(), pkgs.CurrentEpoch)
+				// NOTE: in the first run, how will this be set?
+				// because it will always return a null and hit the condition below
 				if err != nil {
 					clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Failed to fetch current epoch from Redis: %s", err.Error()), time.Now().String(), "High")
 					log.Errorf("Failed to fetch the current epoch from Redis: %s", err.Error())
@@ -88,13 +91,18 @@ func ProcessEvents(block *types.Block) {
 						continue
 					}
 
+					// 1. give it a better name. update submission limit is misleading
+					// 2. this is an old code pulled into this new repo.
+					// this already adds submission limit to the current block number
 					// Calculate submission limit based on the current block number
 					submissionLimit := UpdateSubmissionLimit(new(big.Int).Set(block.Number()))
 
-					// Determine the end block number by adding the submission limit to the current block number
+					// NOTE: and the nwe add the submission limit twice here
 					endBlockNum := new(big.Int).Add(block.Number(), submissionLimit)
 
 					// Prepare the epoch details and save them in Redis
+					// NOTE: create the data model appropriately. this is not epoch details
+					// this is epoch marker details. the epoch release block number, and the submission limit block number
 					epochDetails := EpochDetails{
 						StartBlockNumber: block.Number().Int64(),
 						EndBlockNumber:   endBlockNum.Int64(),
@@ -123,6 +131,8 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 	currentBlockNum := currentBlock.Number().Int64()
 
 	// Fetch all epoch marker keys from Redis
+	// NOTE: ABSOLUTELY never ever to use KEYS in production
+	// maintain a set if needed and use that to iterate over available feature keys
 	redisKeys, err := redis.RedisClient.Keys(context.Background(), fmt.Sprintf("%s.*", pkgs.EpochMarkerKey)).Result()
 	if err != nil {
 		log.Errorf("Failed to fetch epoch markers from Redis: %s", err)
