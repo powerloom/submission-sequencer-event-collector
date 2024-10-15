@@ -51,18 +51,20 @@ func ConfigureABI() {
 	ContractABI = contractABI
 }
 
-func UpdateSubmissionLimit(curBlock *big.Int) *big.Int {
-	// Fetch snapshot submission window from the contract
-	window, err := Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, config.SettingsObj.DataMarketContractAddress)
+// calculateSubmissionLimitBlock computes the block number when the submission window ends
+func calculateSubmissionLimitBlock(epochReleaseBlock *big.Int) (*big.Int, error) {
+	// Fetch snapshot submission limit from the contract
+	submissionLimit, err := Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, config.SettingsObj.DataMarketContractAddress)
 	if err != nil {
-		clients.SendFailureNotification("Contract query error [UpdateSubmissionLimit]", fmt.Sprintf("Failed to fetch snapshot submission window: %s", err.Error()), time.Now().String(), "High")
-		log.Errorf("Failed to fetch snapshot submission window: %s\n", err.Error())
+		clients.SendFailureNotification("Contract query error [calculateSubmissionLimitBlock]", fmt.Sprintf("Failed to fetch snapshot submission limit: %s", err.Error()), time.Now().String(), "High")
+		log.Errorf("Failed to fetch snapshot submission limit: %s\n", err.Error())
+		return nil, err
 	}
 
-	submissionLimit := new(big.Int).Add(curBlock, window)
-	submissionLimit = submissionLimit.Add(submissionLimit, big.NewInt(1))
+	// Add the submission limit to the epoch release block number
+	submissionLimitBlockNum := new(big.Int).Add(epochReleaseBlock, submissionLimit)
 
-	log.Debugln("Snapshot Submission Limit: ", submissionLimit)
+	log.Debugln("Snapshot Submission Limit Block Number: ", submissionLimitBlockNum)
 
-	return submissionLimit
+	return submissionLimitBlockNum, nil
 }

@@ -45,5 +45,6 @@ func InitLogger() {
 			log.SetLevel(log.Level(logLevel))
 		}
 	}
+
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 }

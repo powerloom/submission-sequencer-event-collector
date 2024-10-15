@@ -11,7 +11,6 @@ import (
 var SettingsObj *Settings
 
 type Settings struct {
-	// NOTE: what is this? PROST RPC URL? Where is it being loaded from env?
 	ClientUrl                 string
 	ContractAddress           string
 	RedisHost                 string
@@ -26,6 +25,8 @@ type Settings struct {
 
 func LoadConfig() {
 	config := Settings{
+		ClientUrl:                 getEnv("PROST_RPC_URL", ""),
+		ContractAddress:           getEnv("PROTOCOL_STATE_CONTRACT", ""),
 		RedisHost:                 getEnv("REDIS_HOST", ""),
 		RedisPort:                 getEnv("REDIS_PORT", ""),
 		RedisDB:                   getEnv("REDIS_DB", ""),

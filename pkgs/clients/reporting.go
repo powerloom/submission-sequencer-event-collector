@@ -38,7 +38,6 @@ func (s SequencerAlert) String() string {
 
 // sendPostRequest sends a POST request to the specified URL
 func SendFailureNotification(processName, errorMsg, timestamp, severity string) {
-
 	issue := SequencerAlert{
 		processName,
 		errorMsg,
