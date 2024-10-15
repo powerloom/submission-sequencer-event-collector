@@ -77,7 +77,7 @@ func StartFetchingBlocks() {
 			// Update current block number and store it in Redis
 			currentBlockNum = blockNum
 			if err := redis.Set(context.Background(), pkgs.CurrentBlockNumberKey, strconv.FormatInt(currentBlockNum, 10), 0); err != nil {
-				log.Errorf("Failed to update current block number to %d in Redis: %s", currentBlockNum, err)
+				log.Errorf("Failed to update current block number %d in Redis: %s", currentBlockNum, err)
 			}
 		}
 
