@@ -3,6 +3,7 @@ package pkgs
 // Process Name Constants
 // process : identifier
 const (
+	StartFetchingBlocks = "StartFetchingBlocks"
 	ProcessEvents       = "ProcessEvents"
 	ConstructProjectMap = "ConstructProjectMap"
 )

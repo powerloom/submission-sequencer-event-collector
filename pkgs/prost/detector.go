@@ -2,13 +2,17 @@ package prost
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strconv"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
+	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
+	"github.com/cenkalti/backoff"
+	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -44,11 +48,12 @@ func StartFetchingBlocks() {
 		// Process all blocks from the currentBlockNum to the latest block
 		// NOTE: this can potentially cause a flood of batch preparation requests if the last processed block is very old
 		for blockNum := currentBlockNum + 1; blockNum <= latestBlockNum; blockNum++ {
-			// NOTE: retry appropriately
-			block, err := Client.BlockByNumber(context.Background(), big.NewInt(blockNum))
+			// Retrieve the block from the client using the specified block number
+			block, err := fetchBlock(blockNum)
 			if err != nil {
-				log.Errorf("Failed to fetch block %d: %s", blockNum, err)
-				break // Break the inner loop to retry fetching this block on the next cycle
+				clients.SendFailureNotification(pkgs.StartFetchingBlocks, fmt.Sprintf("Error fetching block %d: %s", blockNum, err.Error()), time.Now().String(), "High")
+				log.Errorf("Error fetching block %d: %s", blockNum, err.Error())
+				continue
 			}
 
 			if block == nil {
@@ -77,4 +82,28 @@ func StartFetchingBlocks() {
 		// Sleep for the configured block time before rechecking
 		time.Sleep(time.Duration(config.SettingsObj.BlockTime) * time.Millisecond)
 	}
+}
+
+func fetchBlock(blockNum int64) (*types.Block, error) {
+	var block *types.Block
+
+	// Define the operation to fetch the block
+	operation := func() error {
+		var err error
+		block, err = Client.BlockByNumber(context.Background(), big.NewInt(blockNum))
+		if err != nil {
+			log.Errorf("Failed to fetch block %d: %s", blockNum, err)
+			return err // Return the error to trigger a retry
+		}
+
+		return nil // Block successfully fetched, return nil to stop retries
+	}
+
+	// Retry fetching the block with backoff strategy
+	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
+		log.Errorln("Error fetching block after retries: ", err.Error())
+		return nil, err
+	}
+
+	return block, nil // Return the successfully fetched block
 }
