@@ -114,8 +114,11 @@ func ProcessEvents(block *types.Block) {
 						log.Errorf("Failed to marshal epoch details: %s", err)
 						continue
 					}
-
 					// Save the epoch details in Redis using the epoch marker key
+					// NOTE: keep a master set of all epoch marker keys created so far
+					// this will be used to iterate over available epoch markers
+					// once done, remove the epoch marker key from this set
+					// ALSO NOTE: create distinct names when referring to keys in different package contexts
 					err = redis.Set(context.Background(), redis.EpochMarkerKey(newEpochID.String()), string(epochDetailsJSON), 0)
 					if err != nil {
 						log.Errorf("Failed to store epoch marker in Redis: %s", err)
