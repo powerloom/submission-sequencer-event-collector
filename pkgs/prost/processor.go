@@ -46,7 +46,6 @@ func ProcessEvents(block *types.Block) {
 		logs, err = Client.FilterLogs(context.Background(), filterQuery)
 		return err
 	}
-	// NOTE: use retry based eth client calls like the following
 	if err = backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
 		log.Errorln("Error fetching logs: ", err.Error())
 		clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Error fetching logs: %s", err.Error()), time.Now().String(), "High")
@@ -130,7 +129,6 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 	currentBlockNum := currentBlock.Number().Int64()
 
 	// Fetch all epoch marker keys from Redis
-	// NOTE: ABSOLUTELY never ever to use KEYS in production
 	// maintain a set if needed and use that to iterate over available feature keys
 	redisKeys, err := redis.RedisClient.Keys(context.Background(), fmt.Sprintf("%s.*", pkgs.EpochMarkerKey)).Result()
 	if err != nil {
@@ -184,14 +182,17 @@ func triggerBatchPreparation(epochID *big.Int, startBlockNum, endBlockNum int64)
 	// Iterate through the block numbers and fetch the block headers (hashes)
 	for blockNum := startBlockNum; blockNum <= endBlockNum; blockNum++ {
 		// Generate the Redis key for the current block number
-		blockHashVal, err := redis.Get(context.Background(), redis.BlockNumberKey(blockNum))
+		blockKey := redis.BlockNumber(blockNum)
+
+		// Fetch the block hash from Redis using the generated key
+		blockHashValue, err := redis.Get(context.Background(), blockKey)
 		if err != nil {
 			log.Errorf("Failed to fetch block hash for block number %d: %s", blockNum, err.Error())
 			continue // Skip this block and move to the next
 		}
 
 		// Convert the block hash from string to common.Hash type
-		blockHash := common.HexToHash(blockHashVal)
+		blockHash := common.HexToHash(blockHashValue)
 
 		// Add the block hash to the headers slice
 		headers = append(headers, blockHash.Hex())

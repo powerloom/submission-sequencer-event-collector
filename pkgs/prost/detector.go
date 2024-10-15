@@ -59,14 +59,13 @@ func StartFetchingBlocks() {
 			log.Debugf("Processing block: %d", blockNum)
 
 			// Check and trigger batch preparation if submission limit is reached for any epoch
-			// NOTE: cant this be run async as a go routine?
-			checkAndTriggerBatchPreparation(block)
-			// NOTE: and this one as well?
+			go checkAndTriggerBatchPreparation(block)
+
 			// Process the events in the block
-			ProcessEvents(block)
+			go ProcessEvents(block)
 
 			// Add block number and its hash to Redis
-			if err = redis.Set(context.Background(), redis.BlockNumberKey(blockNum), block.Hash().Hex(), 0); err != nil {
+			if err = redis.Set(context.Background(), redis.BlockNumber(blockNum), block.Hash().Hex(), 0); err != nil {
 				log.Errorf("Failed to set block number in Redis: %s", err)
 			}
 
