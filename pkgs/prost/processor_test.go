@@ -2,63 +2,82 @@ package prost
 
 import (
 	"context"
-	"fmt"
-	"strconv"
-	"strings"
-	"submission-sequencer-collector/pkgs"
+	"encoding/json"
+	"math/big"
+	"submission-sequencer-collector/config"
+	"submission-sequencer-collector/pkgs/clients"
+	"submission-sequencer-collector/pkgs/redis"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
 )
 
-// Function to fetch epoch markers from Redis
-func FetchEpochMarkers(redisClient *redis.Client) ([]string, error) {
-	// Fetch all epoch marker keys from Redis
-	redisKeys, err := redisClient.Keys(context.Background(), fmt.Sprintf("%s.*", pkgs.EpochMarkerSetKey)).Result()
+func setup(t *testing.T) *miniredis.Miniredis {
+	// Initialize a miniredis instance
+	mockRedis, err := miniredis.Run()
 	if err != nil {
-		return nil, err
+		t.Fatalf("Failed to start miniredis: %v", err)
 	}
 
-	return redisKeys, nil
-}
+	// Configure the application to use miniredis
+	config.SettingsObj = &config.Settings{
+		RedisHost: mockRedis.Host(),
+		RedisPort: mockRedis.Port(),
+		RedisDB:   "0",
+	}
 
-// Test case for FetchEpochMarkers function
-func TestFetchEpochMarkers(t *testing.T) {
-	// Create a mini Redis server for testing
-	mockRedis, err := miniredis.Run()
-	assert.NoError(t, err)
-	defer mockRedis.Close()
+	clients.InitializeReportingClient(config.SettingsObj.SlackReportingUrl, time.Duration(config.SettingsObj.HttpTimeout)*time.Second)
 
-	// Initialize Redis client with mock server
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: mockRedis.Addr(),
+	// Initialize the Redis client
+	redis.RedisClient = redis.NewRedisClient()
+
+	// Use t.Cleanup to ensure the miniredis instance is closed after the test
+	t.Cleanup(func() {
+		redis.RedisClient.FlushAll(context.Background())
+		mockRedis.Close()
 	})
 
-	// Set up the expected Redis keys in the mini Redis server
-	expectedKeys := make([]string, 5)
-	for count := 0; count < 5; count++ {
-		key := fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strconv.Itoa(count))
-		mockRedis.Set(key, "some_value") // Set dummy values to the keys
-		expectedKeys[count] = key        // Store the expected key
+	return mockRedis
+}
+
+// TestCheckAndTriggerBatchPreparation tests the checkAndTriggerBatchPreparation function
+func TestCheckAndTriggerBatchPreparation(t *testing.T) {
+	setup(t)
+
+	// Define the epoch marker key and its details
+	epochKey := "1"
+	epochDetails := EpochMarkerDetails{
+		SubmissionLimitBlockNumber: 10,
+		EpochReleaseBlockNumber:    5,
 	}
 
-	// Set up the expected Redis keys in the mini Redis server
-	for count := 0; count < 5; count++ {
-		mockRedis.Set(fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strconv.Itoa(count)), "some_value") // Set dummy values to the keys
+	// Convert epoch details to JSON
+	epochDetailsJSON, err := json.Marshal(epochDetails)
+	if err != nil {
+		t.Fatalf("Failed to marshal epoch details: %v", err)
 	}
 
-	// Call the function to fetch epoch markers
-	actualKeys, err := FetchEpochMarkers(redisClient)
+	// Store the epoch details in Redis
+	if err := redis.StoreEpochDetails(context.Background(), epochKey, string(epochDetailsJSON), 0); err != nil {
+		t.Fatalf("Failed to store epoch details in Redis: %v", err)
+	}
+
+	// Create a sample block with a matching block number
+	currentBlock := types.NewBlock(&types.Header{Number: big.NewInt(10)}, nil, nil, nil)
+
+	// Call the function under test
+	checkAndTriggerBatchPreparation(currentBlock)
+
+	// Ensure the epoch key is removed from the Redis set
+	members, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet()).Result()
 	assert.NoError(t, err)
+	assert.Empty(t, members)
 
-	// Extract key by trimming the prefix from the Redis key
-	for _, key := range actualKeys {
-		updatedKey := strings.TrimPrefix(key, fmt.Sprintf("%s.", pkgs.EpochMarkerSetKey))
-		fmt.Println("Updated key after trimming: ", updatedKey)
-	}
-
-	// Check if the function returned the expected keys
-	assert.Equal(t, expectedKeys, actualKeys)
+	// Ensure the details for this epoch key have also been removed
+	details, err := redis.RedisClient.Get(context.Background(), epochKey).Result()
+	assert.EqualError(t, err, "redis: nil")
+	assert.Empty(t, details)
 }
