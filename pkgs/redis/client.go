@@ -55,16 +55,6 @@ func Expire(ctx context.Context, key string, expiration time.Duration) error {
 	return RedisClient.Expire(ctx, key, expiration).Err()
 }
 
-func SetSubmission(ctx context.Context, key string, value string, set string, expiration time.Duration) error {
-	if err := RedisClient.SAdd(ctx, set, key).Err(); err != nil {
-		return err
-	}
-	if err := RedisClient.Set(ctx, key, value, expiration).Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
 func Get(ctx context.Context, key string) (string, error) {
 	val, err := RedisClient.Get(ctx, key).Result()
 	if err != nil {
@@ -98,6 +88,35 @@ func SetProcessLog(ctx context.Context, key string, logEntry map[string]interfac
 	err = RedisClient.Set(ctx, key, data, exp).Err()
 	if err != nil {
 		return fmt.Errorf("failed to set log entry in Redis: %w", err)
+	}
+
+	return nil
+}
+
+// StoreEpochDetails stores the epoch ID in the master set and its associated details in Redis
+func StoreEpochDetails(ctx context.Context, epochID string, details string, expiration time.Duration) error {
+	// Store the epoch ID in the master set
+	if err := RedisClient.SAdd(ctx, EpochMarkerSet(), epochID).Err(); err != nil {
+		return fmt.Errorf("failed to add epoch ID to master set: %w", err)
+	}
+
+	// Store the associated details for the epoch
+	if err := RedisClient.Set(ctx, epochID, details, expiration).Err(); err != nil {
+		return fmt.Errorf("failed to store epoch details in Redis: %w", err)
+	}
+
+	return nil
+}
+
+func RemoveEpochFromRedis(ctx context.Context, epochID string) error {
+	// Remove the epoch marker from the master set
+	if err := RedisClient.SRem(ctx, EpochMarkerSet(), epochID).Err(); err != nil {
+		return fmt.Errorf("failed to delete epoch marker %s from Redis: %w", epochID, err)
+	}
+
+	// Remove the associated epoch marker details
+	if err := RedisClient.Del(ctx, epochID).Err(); err != nil {
+		return fmt.Errorf("failed to delete epoch details for %s from Redis: %w", epochID, err)
 	}
 
 	return nil

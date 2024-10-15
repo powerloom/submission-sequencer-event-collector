@@ -9,10 +9,9 @@ const (
 
 // General Key Constants
 const (
-	ProcessTriggerKey  = "TriggeredSequencerProcess"
-	CollectorKey       = "SnapshotCollector"
-	CurrentBlockNumber = "CurrentBlockNumber"
-	CurrentEpoch       = "CurrentEpoch"
-	EpochMarkerKey     = "EpochMarkerKey"
-	BlockNumberKey     = "BlockNumberKey"
+	CollectorKey          = "SnapshotCollector"
+	CurrentBlockNumberKey = "CurrentBlockNumber"
+	CurrentEpoch          = "CurrentEpoch"
+	EpochMarkerSetKey     = "EpochMarkerSetKey"
+	BlockHashByNumberKey  = "BlockHashByNumberKey"
 )

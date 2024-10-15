@@ -5,14 +5,14 @@ import (
 	"submission-sequencer-collector/pkgs"
 )
 
+func EpochMarkerSet() string {
+	return pkgs.EpochMarkerSetKey
+}
+
 func SubmissionSetByHeaderKey(epoch uint64, header string) string {
 	return fmt.Sprintf("%s.%d.%s", pkgs.CollectorKey, epoch, header)
 }
 
-func EpochMarkerKey(epochID string) string {
-	return fmt.Sprintf("%s.%s", pkgs.EpochMarkerKey, epochID)
-}
-
-func BlockNumber(blockNum int64) string {
-	return fmt.Sprintf("%s.%d", pkgs.BlockNumberKey, blockNum)
+func BlockHashByNumber(blockNum int64) string {
+	return fmt.Sprintf("%s.%d", pkgs.BlockHashByNumberKey, blockNum)
 }

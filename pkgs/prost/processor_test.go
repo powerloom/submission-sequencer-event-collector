@@ -16,7 +16,7 @@ import (
 // Function to fetch epoch markers from Redis
 func FetchEpochMarkers(redisClient *redis.Client) ([]string, error) {
 	// Fetch all epoch marker keys from Redis
-	redisKeys, err := redisClient.Keys(context.Background(), fmt.Sprintf("%s.*", pkgs.EpochMarkerKey)).Result()
+	redisKeys, err := redisClient.Keys(context.Background(), fmt.Sprintf("%s.*", pkgs.EpochMarkerSetKey)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -39,14 +39,14 @@ func TestFetchEpochMarkers(t *testing.T) {
 	// Set up the expected Redis keys in the mini Redis server
 	expectedKeys := make([]string, 5)
 	for count := 0; count < 5; count++ {
-		key := fmt.Sprintf("%s.%s", pkgs.EpochMarkerKey, strconv.Itoa(count))
+		key := fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strconv.Itoa(count))
 		mockRedis.Set(key, "some_value") // Set dummy values to the keys
 		expectedKeys[count] = key        // Store the expected key
 	}
 
 	// Set up the expected Redis keys in the mini Redis server
 	for count := 0; count < 5; count++ {
-		mockRedis.Set(fmt.Sprintf("%s.%s", pkgs.EpochMarkerKey, strconv.Itoa(count)), "some_value") // Set dummy values to the keys
+		mockRedis.Set(fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strconv.Itoa(count)), "some_value") // Set dummy values to the keys
 	}
 
 	// Call the function to fetch epoch markers
@@ -55,7 +55,7 @@ func TestFetchEpochMarkers(t *testing.T) {
 
 	// Extract key by trimming the prefix from the Redis key
 	for _, key := range actualKeys {
-		updatedKey := strings.TrimPrefix(key, fmt.Sprintf("%s.", pkgs.EpochMarkerKey))
+		updatedKey := strings.TrimPrefix(key, fmt.Sprintf("%s.", pkgs.EpochMarkerSetKey))
 		fmt.Println("Updated key after trimming: ", updatedKey)
 	}
 

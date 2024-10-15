@@ -17,7 +17,7 @@ func StartFetchingBlocks() {
 	log.Println("Submission Event Collector started")
 
 	// Fetch the last processed block number from Redis
-	lastProcessedBlockNum, err := redis.Get(context.Background(), pkgs.CurrentBlockNumber)
+	lastProcessedBlockNum, err := redis.Get(context.Background(), pkgs.CurrentBlockNumberKey)
 	if err != nil {
 		log.Errorln("Failed to fetch the last processed block number: ", err.Error())
 		lastProcessedBlockNum = "0" // Default to 0 if unable to retrieve from Redis
@@ -65,13 +65,13 @@ func StartFetchingBlocks() {
 			go ProcessEvents(block)
 
 			// Add block number and its hash to Redis
-			if err = redis.Set(context.Background(), redis.BlockNumber(blockNum), block.Hash().Hex(), 0); err != nil {
+			if err = redis.Set(context.Background(), redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 0); err != nil {
 				log.Errorf("Failed to set block number in Redis: %s", err)
 			}
 
 			// Update current block number and store it in Redis
 			currentBlockNum = blockNum
-			redis.Set(context.Background(), pkgs.CurrentBlockNumber, strconv.FormatInt(currentBlockNum, 10), 0)
+			redis.Set(context.Background(), pkgs.CurrentBlockNumberKey, strconv.FormatInt(currentBlockNum, 10), 0)
 		}
 
 		// Sleep for the configured block time before rechecking
