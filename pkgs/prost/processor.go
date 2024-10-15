@@ -70,53 +70,33 @@ func ProcessEvents(block *types.Block) {
 			if releasedEvent.DataMarketAddress.Hex() == config.SettingsObj.DataMarketAddress {
 				log.Debugf("Epoch Released at block %d: %s\n", block.Header().Number, releasedEvent.EpochId.String())
 
-				// Fetch the current epoch ID from Redis
-				// NOTE: why is this important?
-				currentEpochID, err := redis.Get(context.Background(), pkgs.CurrentEpoch)
-				// NOTE: in the first run, how will this be set?
-				// because it will always return a null and hit the condition below
+				newEpochID := releasedEvent.EpochId
+
+				// Calculate the submission limit block based on the epoch release block number (current block number)
+				submissionLimitBlockNumber, err := calculateSubmissionLimitBlock(new(big.Int).Set(block.Number()))
 				if err != nil {
-					clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Failed to fetch current epoch from Redis: %s", err.Error()), time.Now().String(), "High")
-					log.Errorf("Failed to fetch the current epoch from Redis: %s", err.Error())
+					log.Errorf("Failed to fetch submission limit block number: %s", err.Error())
 					continue
 				}
 
-				// If the new epoch is greater than the current epoch, update Redis
-				if currentEpochID < releasedEvent.EpochId.String() {
-					newEpochID := releasedEvent.EpochId
+				// Prepare the epoch marker details
+				epochMarkerDetails := EpochMarkerDetails{
+					EpochReleaseBlockNumber:    block.Number().Int64(),
+					SubmissionLimitBlockNumber: submissionLimitBlockNumber.Int64(),
+				}
 
-					// Update Redis with the new current epoch ID
-					if err := redis.Set(context.Background(), pkgs.CurrentEpoch, newEpochID.String(), 0); err != nil {
-						log.Errorf("Failed to update current epoch in Redis: %s", err.Error())
-						continue
-					}
+				epochMarkerDetailsJSON, err := json.Marshal(epochMarkerDetails)
+				if err != nil {
+					clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Failed to marshal epoch marker details: %s", err.Error()), time.Now().String(), "High")
+					log.Errorf("Failed to marshal epoch marker details: %s", err)
+					continue
+				}
 
-					// Calculate the submission limit block based on the epoch release block number (current block number)
-					submissionLimitBlockNumber, err := calculateSubmissionLimitBlock(new(big.Int).Set(block.Number()))
-					if err != nil {
-						log.Errorf("Failed to fetch submission limit block number: %s", err.Error())
-						continue
-					}
-
-					// Prepare the epoch marker details
-					epochMarkerDetails := EpochMarkerDetails{
-						EpochReleaseBlockNumber:    block.Number().Int64(),
-						SubmissionLimitBlockNumber: submissionLimitBlockNumber.Int64(),
-					}
-
-					epochMarkerDetailsJSON, err := json.Marshal(epochMarkerDetails)
-					if err != nil {
-						clients.SendFailureNotification(pkgs.ProcessEvents, fmt.Sprintf("Failed to marshal epoch marker details: %s", err.Error()), time.Now().String(), "High")
-						log.Errorf("Failed to marshal epoch marker details: %s", err)
-						continue
-					}
-
-					// Store the details associated with the new epoch in Redis using the epoch ID as the key
-					if err := redis.StoreEpochDetails(context.Background(), newEpochID.String(), string(epochMarkerDetailsJSON), 0); err != nil {
-						errorMessage := fmt.Sprintf("Failed to store epoch marker details in Redis for epoch ID %s: %s", newEpochID.String(), err.Error())
-						clients.SendFailureNotification(pkgs.ProcessEvents, errorMessage, time.Now().String(), "High")
-						log.Errorf(errorMessage)
-					}
+				// Store the details associated with the new epoch in Redis using the epoch ID as the key
+				if err := redis.StoreEpochDetails(context.Background(), newEpochID.String(), string(epochMarkerDetailsJSON), 0); err != nil {
+					errorMessage := fmt.Sprintf("Failed to store epoch marker details in Redis for epoch ID %s: %s", newEpochID.String(), err.Error())
+					clients.SendFailureNotification(pkgs.ProcessEvents, errorMessage, time.Now().String(), "High")
+					log.Errorf(errorMessage)
 				}
 			}
 		}

@@ -71,12 +71,14 @@ func StartFetchingBlocks() {
 
 			// Add block number and its hash to Redis
 			if err = redis.Set(context.Background(), redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 0); err != nil {
-				log.Errorf("Failed to set block number in Redis: %s", err)
+				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
 			}
 
 			// Update current block number and store it in Redis
 			currentBlockNum = blockNum
-			redis.Set(context.Background(), pkgs.CurrentBlockNumberKey, strconv.FormatInt(currentBlockNum, 10), 0)
+			if err := redis.Set(context.Background(), pkgs.CurrentBlockNumberKey, strconv.FormatInt(currentBlockNum, 10), 0); err != nil {
+				log.Errorf("Failed to update current block number to %d in Redis: %s", currentBlockNum, err)
+			}
 		}
 
 		// Sleep for the configured block time before rechecking
