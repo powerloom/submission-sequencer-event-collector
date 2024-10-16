@@ -96,7 +96,7 @@ func ProcessEvents(block *types.Block) {
 				if err := redis.StoreEpochDetails(context.Background(), newEpochID.String(), string(epochMarkerDetailsJSON), 0); err != nil {
 					errorMessage := fmt.Sprintf("Failed to store epoch marker details in Redis for epoch ID %s: %s", newEpochID.String(), err.Error())
 					clients.SendFailureNotification(pkgs.ProcessEvents, errorMessage, time.Now().String(), "High")
-					log.Errorf(errorMessage)
+					log.Errorf("Error occurred: %s", errorMessage)
 				}
 			}
 		}
@@ -176,7 +176,7 @@ func triggerBatchPreparation(epochID *big.Int, startBlockNum, endBlockNum int64)
 	log.Debugf("Collected headers for epoch %s: %v", epochID.String(), headers)
 
 	// Fetch valid submission keys for the epoch
-	submissionkeys, err := getValidSubmissionKeys(epochID.Uint64(), headers)
+	submissionkeys, err := getValidSubmissionKeys(context.Background(), epochID.Uint64(), headers)
 	if err != nil {
 		log.Errorln("Failed to fetch submission keys: ", submissionkeys)
 	}
@@ -203,13 +203,13 @@ func triggerBatchPreparation(epochID *big.Int, startBlockNum, endBlockNum int64)
 	}
 }
 
-func getValidSubmissionKeys(epochID uint64, headers []string) ([]string, error) {
+func getValidSubmissionKeys(ctx context.Context, epochID uint64, headers []string) ([]string, error) {
 	// Initialize an empty slice to store valid submission keys
 	submissionKeys := make([]string, 0)
 
 	// Iterate through the list of headers
 	for _, header := range headers {
-		keys := redis.RedisClient.SMembers(context.Background(), redis.SubmissionSetByHeaderKey(epochID, header)).Val()
+		keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(epochID, header)).Val()
 		if len(keys) > 0 {
 			submissionKeys = append(submissionKeys, keys...)
 		}

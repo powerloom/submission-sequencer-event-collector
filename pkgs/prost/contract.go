@@ -17,14 +17,16 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var (
-	Client      *ethclient.Client
-	Instance    *contract.Contract
-	ContractABI abi.ABI
+	Client       *ethclient.Client
+	Instance     *contract.Contract
+	CurrentBlock *types.Block
+	ContractABI  abi.ABI
 )
 
 func ConfigureClient() {
@@ -49,6 +51,18 @@ func ConfigureABI() {
 	}
 
 	ContractABI = contractABI
+}
+
+// Initialize the current block by fetching the lastest block from the chain
+func InitializeCurrentBlock() {
+	for {
+		if block, err := Client.BlockByNumber(context.Background(), nil); err == nil {
+			CurrentBlock = block
+			break
+		} else {
+			log.Debugln("Encountered error while fetching current block: ", err.Error())
+		}
+	}
 }
 
 // calculateSubmissionLimitBlock computes the block number when the submission window ends

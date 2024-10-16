@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strconv"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
 	"submission-sequencer-collector/pkgs/clients"
@@ -20,20 +19,6 @@ import (
 func StartFetchingBlocks() {
 	log.Println("Submission Event Collector started")
 
-	// Fetch the last processed block number from Redis
-	lastProcessedBlockNum, err := redis.Get(context.Background(), pkgs.CurrentBlockNumberKey)
-	if err != nil {
-		log.Errorln("Failed to fetch the last processed block number: ", err.Error())
-		lastProcessedBlockNum = "0" // Default to 0 if unable to retrieve from Redis
-	}
-
-	// Parse the last processed block number
-	currentBlockNum, err := strconv.ParseInt(lastProcessedBlockNum, 10, 64)
-	if err != nil {
-		log.Errorln("Could not parse last processed block number: ", err.Error())
-		currentBlockNum = 0 // Default to 0 if parsing fails
-	}
-
 	for {
 		// Fetch the latest block available on the chain
 		latestBlock, err := Client.BlockByNumber(context.Background(), nil)
@@ -43,11 +28,8 @@ func StartFetchingBlocks() {
 			continue
 		}
 
-		latestBlockNum := latestBlock.Number().Int64()
-
-		// Process all blocks from the currentBlockNum to the latest block
-		// NOTE: this can potentially cause a flood of batch preparation requests if the last processed block is very old
-		for blockNum := currentBlockNum + 1; blockNum <= latestBlockNum; blockNum++ {
+		// Check if there's a gap between the current block and the latest block on the chain.
+		for blockNum := CurrentBlock.Number().Int64() + 1; blockNum <= latestBlock.Number().Int64(); blockNum++ {
 			// Retrieve the block from the client using the specified block number
 			block, err := fetchBlock(blockNum)
 			if err != nil {
@@ -74,11 +56,8 @@ func StartFetchingBlocks() {
 				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
 			}
 
-			// Update current block number and store it in Redis
-			currentBlockNum = blockNum
-			if err := redis.Set(context.Background(), pkgs.CurrentBlockNumberKey, strconv.FormatInt(currentBlockNum, 10), 0); err != nil {
-				log.Errorf("Failed to update current block number %d in Redis: %s", currentBlockNum, err)
-			}
+			// Update current block and store it in Redis
+			updateCurrentBlock(context.Background(), block)
 		}
 
 		// Sleep for the configured block time before rechecking
@@ -86,6 +65,7 @@ func StartFetchingBlocks() {
 	}
 }
 
+// fetchBlock retrieves the block from the client using the specified block number
 func fetchBlock(blockNum int64) (*types.Block, error) {
 	var block *types.Block
 
@@ -108,4 +88,12 @@ func fetchBlock(blockNum int64) (*types.Block, error) {
 	}
 
 	return block, nil // Return the successfully fetched block
+}
+
+// updateCurrentBlock updates the global current block variable and stores it in Redis
+func updateCurrentBlock(ctx context.Context, block *types.Block) {
+	CurrentBlock = block
+	if err := redis.Set(ctx, pkgs.CurrentBlockNumberKey, CurrentBlock.Number().String(), 0); err != nil {
+		log.Errorf("Failed to update current block number %d in Redis: %s", CurrentBlock.Number().Int64(), err)
+	}
 }

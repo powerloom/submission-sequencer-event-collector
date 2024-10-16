@@ -27,6 +27,7 @@ func main() {
 	prost.ConfigureClient()
 	prost.ConfigureContractInstance()
 	prost.ConfigureABI()
+	prost.InitializeCurrentBlock()
 
 	var wg sync.WaitGroup
 
