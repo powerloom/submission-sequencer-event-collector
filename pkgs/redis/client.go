@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -69,28 +68,6 @@ func Get(ctx context.Context, key string) (string, error) {
 
 func Set(ctx context.Context, key, value string, expiration time.Duration) error {
 	return RedisClient.Set(ctx, key, value, expiration).Err()
-}
-
-func Incr(ctx context.Context, key string) (int64, error) {
-	result, err := RedisClient.Incr(ctx, key).Result()
-	if err != nil {
-		return 0, err
-	}
-	return result, nil
-}
-
-func SetProcessLog(ctx context.Context, key string, logEntry map[string]interface{}, exp time.Duration) error {
-	data, err := json.Marshal(logEntry)
-	if err != nil {
-		return fmt.Errorf("failed to marshal log entry: %w", err)
-	}
-
-	err = RedisClient.Set(ctx, key, data, exp).Err()
-	if err != nil {
-		return fmt.Errorf("failed to set log entry in Redis: %w", err)
-	}
-
-	return nil
 }
 
 // StoreEpochDetails stores the epoch ID in the master set and its associated details in Redis

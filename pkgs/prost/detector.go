@@ -56,8 +56,8 @@ func StartFetchingBlocks() {
 				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
 			}
 
-			// Update current block and store it in Redis
-			updateCurrentBlock(context.Background(), block)
+			// Update current block
+			CurrentBlock = block
 		}
 
 		// Sleep for the configured block time before rechecking
@@ -87,13 +87,5 @@ func fetchBlock(blockNum int64) (*types.Block, error) {
 		return nil, err
 	}
 
-	return block, nil // Return the successfully fetched block
-}
-
-// updateCurrentBlock updates the global current block variable and stores it in Redis
-func updateCurrentBlock(ctx context.Context, block *types.Block) {
-	CurrentBlock = block
-	if err := redis.Set(ctx, pkgs.CurrentBlockNumberKey, CurrentBlock.Number().String(), 0); err != nil {
-		log.Errorf("Failed to update current block number %d in Redis: %s", CurrentBlock.Number().Int64(), err)
-	}
+	return block, nil
 }
