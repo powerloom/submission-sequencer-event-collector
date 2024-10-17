@@ -2,11 +2,8 @@ package prost
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"submission-sequencer-collector/config"
-	"submission-sequencer-collector/pkgs"
-	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
@@ -15,32 +12,40 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var lastProcessedBlock int64
+
 // StartFetchingBlocks continuously fetches blocks and processes events
 func StartFetchingBlocks() {
 	log.Println("Submission Event Collector started")
 
 	for {
 		// Fetch the latest block available on the chain
-		latestBlock, err := Client.BlockByNumber(context.Background(), nil)
+		latestBlock, err := fetchBlock(nil)
 		if err != nil {
 			log.Errorf("Error fetching latest block: %s", err)
 			time.Sleep(100 * time.Millisecond) // Sleep briefly before retrying to prevent spamming
 			continue
 		}
 
-		// Check if there's a gap between the current block and the latest block on the chain.
-		for blockNum := CurrentBlock.Number().Int64() + 1; blockNum <= latestBlock.Number().Int64(); blockNum++ {
-			// Retrieve the block from the client using the specified block number
-			block, err := fetchBlock(blockNum)
+		latestBlockNumber := latestBlock.Number().Int64()
+
+		// Check if lastProcessedBlock is set, if not set it to the latest block
+		if lastProcessedBlock == 0 {
+			lastProcessedBlock = latestBlockNumber
+		}
+
+		// Process any missing blocks between the last processed block and the latest block
+		for blockNum := lastProcessedBlock + 1; blockNum <= latestBlockNumber; blockNum++ {
+			// Fetch the block by its number by passing the block number
+			block, err := fetchBlock(big.NewInt(blockNum))
 			if err != nil {
-				clients.SendFailureNotification(pkgs.StartFetchingBlocks, fmt.Sprintf("Error fetching block %d: %s", blockNum, err.Error()), time.Now().String(), "High")
-				log.Errorf("Error fetching block %d: %s", blockNum, err.Error())
-				continue
+				log.Errorf("Error fetching block %d: %s", blockNum, err)
+				continue // Skip this block and continue with the next
 			}
 
 			if block == nil {
 				log.Errorln("Received nil block for number: ", blockNum)
-				break
+				continue
 			}
 
 			log.Debugf("Processing block: %d", blockNum)
@@ -56,8 +61,8 @@ func StartFetchingBlocks() {
 				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
 			}
 
-			// Update current block
-			CurrentBlock = block
+			// Update last processed block
+			lastProcessedBlock = blockNum
 		}
 
 		// Sleep for the configured block time before rechecking
@@ -65,25 +70,22 @@ func StartFetchingBlocks() {
 	}
 }
 
-// fetchBlock retrieves the block from the client using the specified block number
-func fetchBlock(blockNum int64) (*types.Block, error) {
+// fetchBlock retrieves a block from the client using retry logic
+func fetchBlock(blockNum *big.Int) (*types.Block, error) {
 	var block *types.Block
-
-	// Define the operation to fetch the block
 	operation := func() error {
 		var err error
-		block, err = Client.BlockByNumber(context.Background(), big.NewInt(blockNum))
+		block, err = Client.BlockByNumber(context.Background(), blockNum) // Pass blockNum (nil for the latest block)
 		if err != nil {
-			log.Errorf("Failed to fetch block %d: %s", blockNum, err)
+			log.Errorf("Failed to fetch block %v: %s", blockNum, err)
 			return err // Return the error to trigger a retry
 		}
-
 		return nil // Block successfully fetched, return nil to stop retries
 	}
 
-	// Retry fetching the block with backoff strategy
+	// Retry fetching the block with a backoff strategy
 	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
-		log.Errorln("Error fetching block after retries: ", err.Error())
+		log.Errorln("Error fetching block after retries: ", err)
 		return nil, err
 	}
 
