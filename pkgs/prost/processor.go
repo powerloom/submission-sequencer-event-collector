@@ -68,9 +68,10 @@ func ProcessEvents(block *types.Block) {
 
 			// Ensure the DataMarketAddress in the event matches the configured DataMarketAddress
 			if releasedEvent.DataMarketAddress.Hex() == config.SettingsObj.DataMarketAddress {
-				log.Debugf("Epoch Released at block %d: %s\n", block.Header().Number, releasedEvent.EpochId.String())
-
+				// Extract the epoch ID from the event
 				newEpochID := releasedEvent.EpochId
+
+				log.Debugf("Epoch Released at block %d: %s\n", block.Header().Number, newEpochID.String())
 
 				// Calculate the submission limit block based on the epoch release block number (current block number)
 				submissionLimitBlockNumber, err := calculateSubmissionLimitBlock(new(big.Int).Set(block.Number()))
@@ -141,11 +142,6 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 
 			// Trigger batch preparation logic for the current epoch
 			go triggerBatchPreparation(epochID, epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum)
-
-			// Remove the epoch marker and its details from Redis after processing
-			if err := redis.RemoveEpochFromRedis(context.Background(), epochKey); err != nil {
-				log.Errorf("Error removing epoch %s from Redis: %s", epochKey, err)
-			}
 		}
 	}
 }
@@ -197,9 +193,15 @@ func triggerBatchPreparation(epochID *big.Int, startBlockNum, endBlockNum int64)
 	}
 
 	// Push the serialized data to Redis
-	err = redis.RedisClient.LPush(context.Background(), "batchQueue", jsonData).Err()
+	submissionKey := redis.GetSubmissionQueueKey()
+	err = redis.RedisClient.LPush(context.Background(), submissionKey, jsonData).Err()
 	if err != nil {
 		log.Fatalf("Error pushing data to Redis: %s", err)
+	}
+
+	// Remove the epochID and its details from Redis after processing
+	if err := redis.RemoveEpochFromRedis(context.Background(), epochID.String()); err != nil {
+		log.Errorf("Error removing epoch %s from Redis: %s", epochID.String(), err)
 	}
 }
 
