@@ -28,6 +28,9 @@ func main() {
 	prost.ConfigureContractInstance()
 	prost.ConfigureABI()
 
+	// Load the state variables from the protocol state contract
+	prost.LoadContractStateVariables()
+
 	var wg sync.WaitGroup
 
 	wg.Add(1)
