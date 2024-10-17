@@ -65,8 +65,8 @@ func StartFetchingBlocks() {
 			lastProcessedBlock = blockNum
 		}
 
-		// Sleep for the configured block time before rechecking
-		time.Sleep(time.Duration(config.SettingsObj.BlockTime) * time.Millisecond)
+		// Sleep for approximately half the expected block time to balance load and responsiveness.
+		time.Sleep(time.Duration(config.SettingsObj.BlockTime*500) * time.Millisecond)
 	}
 }
 
