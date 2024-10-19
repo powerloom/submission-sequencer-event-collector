@@ -9,6 +9,7 @@ import (
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/contract"
+	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -22,10 +23,9 @@ import (
 )
 
 var (
-	Client          *ethclient.Client
-	Instance        *contract.Contract
-	ContractABI     abi.ABI
-	SubmissionLimit *big.Int
+	Client      *ethclient.Client
+	Instance    *contract.Contract
+	ContractABI abi.ABI
 )
 
 func ConfigureClient() {
@@ -71,20 +71,51 @@ func MustQuery[K any](ctx context.Context, call func() (val K, err error)) (K, e
 }
 
 func LoadContractStateVariables() {
-	// Fetch snapshot submission limit from the contract
-	if output, err := MustQuery[*big.Int](context.Background(), func() (*big.Int, error) {
-		return Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, config.SettingsObj.DataMarketContractAddress)
-	}); err == nil {
-		SubmissionLimit = output
+	// Iterate over each data market contract address in the config
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketContractAddresses {
+		// Fetch snapshot submission limit for the current data market address
+		if output, err := MustQuery[*big.Int](context.Background(), func() (*big.Int, error) {
+			return Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, dataMarketAddress)
+		}); err == nil {
+			// Convert the submission limit to a string for storage in Redis
+			submissionLimit := output.String()
+
+			// Store the submission limit in the Redis hash table
+			err := redis.RedisClient.HSet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress.Hex(), submissionLimit).Err()
+			if err != nil {
+				log.Errorf("Failed to set submission limit for %s in Redis", dataMarketAddress.Hex())
+			}
+		}
 	}
 }
 
+// isValidDataMarketAddress checks if the given address is in the DataMarketAddress list
+func isValidDataMarketAddress(dataMarketAddress string) bool {
+	for _, addr := range config.SettingsObj.DataMarketAddresses {
+		if dataMarketAddress == addr {
+			return true
+		}
+	}
+
+	return false
+}
+
 // calculateSubmissionLimitBlock computes the block number when the submission window ends
-func calculateSubmissionLimitBlock(epochReleaseBlock *big.Int) (*big.Int, error) {
-	// Add the submission limit to the epoch release block number
-	submissionLimitBlockNum := new(big.Int).Add(epochReleaseBlock, SubmissionLimit)
+func calculateSubmissionLimitBlock(dataMarketAddress string, epochReleaseBlock *big.Int) (*big.Int, error) {
+	// Fetch the submission limit for the given data market address from Redis
+	submissionLimitStr, err := redis.RedisClient.HGet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress).Result()
+	if err != nil {
+		log.Errorf("Error fetching submission limit for data market address %s: %s", dataMarketAddress, err)
+		return nil, err
+	}
 
-	log.Debugln("Snapshot Submission Limit Block Number: ", submissionLimitBlockNum)
+	// Convert the submission limit from string to *big.Int
+	submissionLimit, ok := new(big.Int).SetString(submissionLimitStr, 10)
+	if !ok {
+		log.Errorf("Invalid submission limit value for data market address %s: %s", dataMarketAddress, submissionLimitStr)
+		return nil, err
+	}
 
-	return submissionLimitBlockNum, nil
+	// Calculate and return the submission limit block number
+	return new(big.Int).Add(epochReleaseBlock, submissionLimit), nil
 }

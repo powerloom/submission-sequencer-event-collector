@@ -10,7 +10,8 @@ const (
 
 // General Key Constants
 const (
-	CollectorKey         = "SnapshotCollector"
-	EpochMarkerSetKey    = "EpochMarkerSetKey"
-	BlockHashByNumberKey = "BlockHashByNumberKey"
+	CollectorKey            = "SnapshotCollector"
+	EpochMarkerSetKey       = "EpochMarkerSetKey"
+	BlockHashByNumberKey    = "BlockHashByNumberKey"
+	SubmissionLimitTableKey = "SubmissionLimitTable"
 )
