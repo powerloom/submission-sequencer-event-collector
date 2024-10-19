@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"strconv"
@@ -11,28 +12,42 @@ import (
 var SettingsObj *Settings
 
 type Settings struct {
-	ClientUrl                 string
-	ContractAddress           string
-	RedisHost                 string
-	RedisPort                 string
-	RedisDB                   string
-	SlackReportingUrl         string
-	DataMarketAddress         string
-	DataMarketContractAddress common.Address
-	BlockTime                 int
-	HttpTimeout               int
+	ClientUrl                   string
+	ContractAddress             string
+	RedisHost                   string
+	RedisPort                   string
+	RedisDB                     string
+	SlackReportingUrl           string
+	DataMarketAddresses         []string
+	DataMarketContractAddresses []common.Address
+	BlockTime                   int
+	HttpTimeout                 int
 }
 
 func LoadConfig() {
+	dataMarketAddresses := getEnv("DATA_MARKET_ADDRESSES", "[]")
+	dataMarketAddressesList := []string{}
+
+	err := json.Unmarshal([]byte(dataMarketAddresses), &dataMarketAddressesList)
+	if err != nil {
+		log.Fatalf("Failed to parse DATA_MARKET_ADDRESSES environment variable: %v", err)
+	}
+	if len(dataMarketAddressesList) == 0 {
+		log.Fatalf("DATA_MARKET_ADDRESSES environment variable has an empty array")
+	}
+
 	config := Settings{
-		ClientUrl:                 getEnv("PROST_RPC_URL", ""),
-		ContractAddress:           getEnv("PROTOCOL_STATE_CONTRACT", ""),
-		RedisHost:                 getEnv("REDIS_HOST", ""),
-		RedisPort:                 getEnv("REDIS_PORT", ""),
-		RedisDB:                   getEnv("REDIS_DB", ""),
-		SlackReportingUrl:         getEnv("SLACK_REPORTING_URL", ""),
-		DataMarketAddress:         getEnv("DATA_MARKET_CONTRACT", ""),
-		DataMarketContractAddress: common.HexToAddress(getEnv("DATA_MARKET_CONTRACT", "")),
+		ClientUrl:           getEnv("PROST_RPC_URL", ""),
+		ContractAddress:     getEnv("PROTOCOL_STATE_CONTRACT", ""),
+		RedisHost:           getEnv("REDIS_HOST", ""),
+		RedisPort:           getEnv("REDIS_PORT", ""),
+		RedisDB:             getEnv("REDIS_DB", ""),
+		SlackReportingUrl:   getEnv("SLACK_REPORTING_URL", ""),
+		DataMarketAddresses: dataMarketAddressesList,
+	}
+
+	for _, addr := range config.DataMarketAddresses {
+		config.DataMarketContractAddresses = append(config.DataMarketContractAddresses, common.HexToAddress(addr))
 	}
 
 	blockTime, blockTimeParseErr := strconv.Atoi(getEnv("BLOCK_TIME", ""))
