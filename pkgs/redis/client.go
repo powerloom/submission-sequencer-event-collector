@@ -71,9 +71,9 @@ func Set(ctx context.Context, key, value string, expiration time.Duration) error
 }
 
 // StoreEpochDetails stores the epoch ID in the master set and its associated details in Redis
-func StoreEpochDetails(ctx context.Context, epochID string, details string, expiration time.Duration) error {
+func StoreEpochDetails(ctx context.Context, dataMarketAddress, epochID, details string, expiration time.Duration) error {
 	// Store the epoch ID in the master set
-	if err := RedisClient.SAdd(ctx, EpochMarkerSet(), epochID).Err(); err != nil {
+	if err := RedisClient.SAdd(ctx, EpochMarkerSet(dataMarketAddress), epochID).Err(); err != nil {
 		return fmt.Errorf("failed to add epoch ID to master set: %w", err)
 	}
 
@@ -85,9 +85,9 @@ func StoreEpochDetails(ctx context.Context, epochID string, details string, expi
 	return nil
 }
 
-func RemoveEpochFromRedis(ctx context.Context, epochID string) error {
+func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string) error {
 	// Remove the epoch marker from the master set
-	if err := RedisClient.SRem(ctx, EpochMarkerSet(), epochID).Err(); err != nil {
+	if err := RedisClient.SRem(ctx, EpochMarkerSet(dataMarketAddress), epochID).Err(); err != nil {
 		return fmt.Errorf("failed to delete epoch marker %s from Redis: %w", epochID, err)
 	}
 
