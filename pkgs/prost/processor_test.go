@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
+	"github.com/alicebob/miniredis"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setup(t *testing.T) *miniredis.Miniredis {
@@ -47,6 +48,9 @@ func setup(t *testing.T) *miniredis.Miniredis {
 func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	setup(t)
 
+	// Define the data market address
+	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
+
 	// Define the epoch marker key and its details
 	epochKey := "1"
 	epochDetails := EpochMarkerDetails{
@@ -61,7 +65,7 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	}
 
 	// Store the epoch details in Redis
-	if err := redis.StoreEpochDetails(context.Background(), epochKey, string(epochDetailsJSON), 0); err != nil {
+	if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, epochKey, string(epochDetailsJSON), time.Duration(1)*time.Second); err != nil {
 		t.Fatalf("Failed to store epoch details in Redis: %v", err)
 	}
 
@@ -72,12 +76,19 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	checkAndTriggerBatchPreparation(currentBlock)
 
 	// Ensure the epoch key is removed from the Redis set
-	members, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet()).Result()
+	members, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
 	assert.NoError(t, err)
-	assert.Empty(t, members)
+	require.Equal(t, 1, len(members))
 
 	// Ensure the details for this epoch key have also been removed
-	details, err := redis.RedisClient.Get(context.Background(), epochKey).Result()
-	assert.EqualError(t, err, "redis: nil")
-	assert.Empty(t, details)
+	output, err := redis.RedisClient.Get(context.Background(), epochKey).Result()
+	assert.NoError(t, err)
+
+	var details EpochMarkerDetails
+	err = json.Unmarshal([]byte(output), &details)
+	assert.NoError(t, err)
+
+	// Compare the fields from epochDetails and details
+	require.Equal(t, epochDetails.EpochReleaseBlockNumber, details.EpochReleaseBlockNumber)
+	require.Equal(t, epochDetails.SubmissionLimitBlockNumber, details.SubmissionLimitBlockNumber)
 }
