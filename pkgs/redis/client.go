@@ -96,14 +96,8 @@ func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string
 		return fmt.Errorf("failed to delete epoch marker %s from Redis: %w", epochID, err)
 	}
 
-	// Remove the associated epoch marker details related to the data market
-	if err := Delete(ctx, EpochMarkerDetails(dataMarketAddress, epochID)); err != nil {
-		// Set an expiry as a fallback if removal fails
-		if expireErr := RedisClient.Expire(ctx, EpochMarkerDetails(dataMarketAddress, epochID), 20*time.Minute).Err(); expireErr != nil {
-			return fmt.Errorf("failed to set expiry for epoch details after removal failure: %w", expireErr)
-		}
-
-		return fmt.Errorf("failed to delete epoch details for %s from Redis: %w", epochID, err)
+	if expireErr := RedisClient.Expire(ctx, EpochMarkerDetails(dataMarketAddress, epochID), 30*time.Minute).Err(); expireErr != nil {
+		return fmt.Errorf("failed to set expiry for epoch details after removal failure: %w", expireErr)
 	}
 
 	return nil
