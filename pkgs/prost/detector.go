@@ -57,7 +57,7 @@ func StartFetchingBlocks() {
 			go ProcessEvents(block)
 
 			// Add block number and its hash to Redis
-			if err = redis.Set(context.Background(), redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 0); err != nil {
+			if err = redis.SetWithExpiration(context.Background(), redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 30*time.Minute); err != nil {
 				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
 			}
 
