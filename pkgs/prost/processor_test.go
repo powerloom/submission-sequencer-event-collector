@@ -70,7 +70,7 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	}
 
 	// Create a sample block with a matching block number
-	currentBlock := types.NewBlock(&types.Header{Number: big.NewInt(10)}, nil, nil, nil, nil)
+	currentBlock := types.NewBlock(&types.Header{Number: big.NewInt(10)}, nil, nil, nil)
 
 	// Call the function under test
 	checkAndTriggerBatchPreparation(currentBlock)
