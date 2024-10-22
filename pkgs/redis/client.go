@@ -70,6 +70,7 @@ func Set(ctx context.Context, key, value string) error {
 	return RedisClient.Set(ctx, key, value, 0).Err()
 }
 
+// use this when you want to set an expiration
 func SetWithExpiration(ctx context.Context, key, value string, expiration time.Duration) error {
 	return RedisClient.Set(ctx, key, value, expiration).Err()
 }
