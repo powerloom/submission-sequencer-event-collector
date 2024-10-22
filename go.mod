@@ -3,7 +3,7 @@ module submission-sequencer-collector
 go 1.23
 
 require (
-	github.com/ethereum/go-ethereum v1.14.17
+	github.com/ethereum/go-ethereum v1.14.7
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 )
@@ -51,4 +51,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum v1.14.17 => github.com/PowerLoom/go-ethereum v1.14.7-unsupported-tx-final
+replace github.com/ethereum/go-ethereum v1.14.7 => github.com/PowerLoom/go-ethereum v1.14.7-unsupported-tx-final
