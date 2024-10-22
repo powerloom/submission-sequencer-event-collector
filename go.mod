@@ -1,6 +1,6 @@
 module submission-sequencer-collector
 
-go 1.22.6
+go 1.23
 
 require (
 	github.com/ethereum/go-ethereum v1.14.11
