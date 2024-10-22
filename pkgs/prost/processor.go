@@ -99,7 +99,7 @@ func ProcessEvents(block *types.Block) {
 				}
 
 				// Store the details associated with the new epoch in Redis
-				if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON), 0); err != nil {
+				if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON)); err != nil {
 					errorMessage := fmt.Sprintf("Failed to store epoch marker details in Redis for epoch ID %s in data market %s: %s", newEpochID.String(), dataMarketAddress, err.Error())
 					clients.SendFailureNotification(pkgs.ProcessEvents, errorMessage, time.Now().String(), "High")
 					log.Errorf("Error occurred: %s", errorMessage)

@@ -65,7 +65,7 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	}
 
 	// Store the epoch details in Redis
-	if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, epochKey, string(epochDetailsJSON), time.Duration(1)*time.Second); err != nil {
+	if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, epochKey, string(epochDetailsJSON)); err != nil {
 		t.Fatalf("Failed to store epoch details in Redis: %v", err)
 	}
 
