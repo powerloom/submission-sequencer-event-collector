@@ -19,7 +19,7 @@ env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: powerloom/sequencer-dequeuer
+  IMAGE_NAME: powerloom/sequencer-event-collector
 
 
 jobs:
