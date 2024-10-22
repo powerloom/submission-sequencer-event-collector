@@ -14,6 +14,10 @@ func EpochMarkerSet(dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strings.ToLower(dataMarketAddress))
 }
 
+func EpochMarkerDetails(dataMarketAddress, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.EpochMarkerDetailsKey, strings.ToLower(dataMarketAddress), epochID)
+}
+
 func SubmissionSetByHeaderKey(epoch uint64, header, dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%d.%s.%s", pkgs.CollectorKey, epoch, header, dataMarketAddress)
 }

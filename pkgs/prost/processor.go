@@ -98,9 +98,9 @@ func ProcessEvents(block *types.Block) {
 					continue
 				}
 
-				// Store the details associated with the new epoch in Redis using the epoch ID as the key
-				if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON), 20*time.Minute); err != nil {
-					errorMessage := fmt.Sprintf("Failed to store epoch marker details in Redis for epoch ID %s: %s", newEpochID.String(), err.Error())
+				// Store the details associated with the new epoch in Redis
+				if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON), 0); err != nil {
+					errorMessage := fmt.Sprintf("Failed to store epoch marker details in Redis for epoch ID %s in data market %s: %s", newEpochID.String(), dataMarketAddress, err.Error())
 					clients.SendFailureNotification(pkgs.ProcessEvents, errorMessage, time.Now().String(), "High")
 					log.Errorf("Error occurred: %s", errorMessage)
 				}
@@ -132,15 +132,15 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 			// Process each epoch marker key for this data market address
 			for _, epochKey := range epochMarkerKeys {
 				// Retrieve the epoch marker details from Redis
-				epochMarkerDetailsJSON, err := redis.RedisClient.Get(context.Background(), epochKey).Result()
+				epochMarkerDetailsJSON, err := redis.RedisClient.Get(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochKey)).Result()
 				if err != nil {
-					log.Errorf("Failed to fetch epoch details from Redis for key %s: %s", epochKey, err)
+					log.Errorf("Failed to fetch epoch marker details from Redis for key %s: %s", epochKey, err)
 					continue
 				}
 
 				var epochMarkerDetails EpochMarkerDetails
 				if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
-					log.Errorf("Failed to unmarshal epoch details for key %s: %s", epochKey, err)
+					log.Errorf("Failed to unmarshal epoch marker details for key %s: %s", epochKey, err)
 					continue
 				}
 
@@ -159,7 +159,7 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 					go triggerBatchPreparation(dataMarketAddress, epochID, epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum)
 				}
 			}
-		}(dataMarketAddress) // Pass dataMarketAddress to avoid closure issues
+		}(dataMarketAddress) // Pass data market address to avoid closure issues
 	}
 
 	// Wait for all data market goroutines to finish

@@ -12,6 +12,7 @@ const (
 const (
 	CollectorKey            = "SnapshotCollector"
 	EpochMarkerSetKey       = "EpochMarkerSetKey"
+	EpochMarkerDetailsKey   = "EpochMarkerDetailsKey"
 	BlockHashByNumberKey    = "BlockHashByNumberKey"
 	SubmissionLimitTableKey = "SubmissionLimitTable"
 )
