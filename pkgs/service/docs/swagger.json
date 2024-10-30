@@ -1,0 +1,116 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "This API handles submissions and provides Swagger documentation",
+        "title": "My API Documentation",
+        "termsOfService": "http://yourterms.com",
+        "contact": {
+            "name": "API Support",
+            "url": "http://www.yoursupport.com",
+            "email": "support@example.com"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/totalSubmissions": {
+            "post": {
+                "description": "Retrieves total submission counts for a specific data market address across a specified number of past days",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Submissions"
+                ],
+                "summary": "Get total submissions",
+                "parameters": [
+                    {
+                        "description": "Submissions request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.SubmissionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_ResponseArray-service_DailySubmissions"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request, past days less than 1, or invalid data market address",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "service.DailySubmissions": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "integer"
+                },
+                "submissions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.InfoType-service_ResponseArray-service_DailySubmissions": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.DailySubmissions"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "service.Response-service_ResponseArray-service_DailySubmissions": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_ResponseArray-service_DailySubmissions"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.SubmissionsRequest": {
+            "type": "object",
+            "properties": {
+                "data_market_address": {
+                    "type": "string"
+                },
+                "past_days": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

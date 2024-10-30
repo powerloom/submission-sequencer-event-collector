@@ -17,6 +17,7 @@ type Settings struct {
 	RedisHost                   string
 	RedisPort                   string
 	RedisDB                     string
+	AuthReadToken               string
 	SlackReportingUrl           string
 	DataMarketAddresses         []string
 	DataMarketContractAddresses []common.Address
@@ -42,6 +43,7 @@ func LoadConfig() {
 		RedisHost:           getEnv("REDIS_HOST", ""),
 		RedisPort:           getEnv("REDIS_PORT", ""),
 		RedisDB:             getEnv("REDIS_DB", ""),
+		AuthReadToken:       getEnv("AUTH_READ_TOKEN", ""),
 		SlackReportingUrl:   getEnv("SLACK_REPORTING_URL", ""),
 		DataMarketAddresses: dataMarketAddressesList,
 	}
