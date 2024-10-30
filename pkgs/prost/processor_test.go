@@ -81,7 +81,7 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	require.Equal(t, 1, len(members))
 
 	// Ensure the details for this epoch key have also been removed
-	output, err := redis.RedisClient.Get(context.Background(), epochKey).Result()
+	output, err := redis.RedisClient.Get(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochKey)).Result()
 	assert.NoError(t, err)
 
 	var details EpochMarkerDetails

@@ -197,6 +197,11 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		log.Errorf("Failed to fetch submission keys for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err.Error())
 	}
 
+	// Update total submission count for the specified data market address
+	if err := UpdateTotalSubmissionCount(context.Background(), epochID, dataMarketAddress, len(submissionkeys)); err != nil {
+		log.Errorf("Failed to update total submission count for data market address %s: %s", dataMarketAddress, err.Error())
+	}
+
 	// Construct the project map [ProjectID -> SubmissionKeys]
 	projectMap := constructProjectMap(submissionkeys)
 
@@ -257,4 +262,43 @@ func constructProjectMap(submissionKeys []string) map[string][]string {
 	}
 
 	return projectMap
+}
+
+// Calculate and update total submission count for a data market address
+func UpdateTotalSubmissionCount(ctx context.Context, epochID *big.Int, dataMarketAddress string, submissionCount int) error {
+	// Fetch the current day
+	currentDay, err := FetchCurrentDay(common.HexToAddress(dataMarketAddress))
+	if err != nil {
+		log.Errorf("Failed to fetch current day for data market address %s: %v", dataMarketAddress, err)
+		return err
+	}
+
+	// Fetch day size for the specified data market address from Redis
+	daySize, err := redis.GetDaySize(ctx, epochID.Int64(), dataMarketAddress)
+	if err != nil {
+		log.Errorf("Failed to fetch day size for data market address %s: %v", dataMarketAddress, err)
+		return err
+	}
+
+	// Calculate expiration time
+	expirationTime := getExpirationTime(epochID.Int64(), daySize.Int64())
+
+	// Set the current day in Redis with the calculated expiration duration
+	if err := redis.SetWithExpiration(context.Background(), redis.GetCurrentDayKey(dataMarketAddress), currentDay.String(), time.Until(expirationTime)); err != nil {
+		return fmt.Errorf("failed to cache day value for %s in Redis: %v", dataMarketAddress, err)
+	}
+
+	// Increment the total submissions count in Redis by the length of submissionKeys
+	if submissionCount > 0 {
+		count, err := redis.IncrBy(ctx, redis.TotalSubmissionsCountKey(currentDay.String(), dataMarketAddress), int64(submissionCount))
+		if err != nil {
+			clients.SendFailureNotification(pkgs.UpdateTotalSubmissionCount, fmt.Sprintf("Failed to increment total submissions count for data market address %s: %s", dataMarketAddress, err.Error()), time.Now().String(), "High")
+			log.Errorf("Error incrementing total submissions count for data market address %s: %v", dataMarketAddress, err)
+			return err
+		}
+
+		log.Debugf("Total submission count for data market address %s: %d", dataMarketAddress, count)
+	}
+
+	return nil
 }

@@ -23,9 +23,10 @@ import (
 )
 
 var (
-	Client      *ethclient.Client
-	Instance    *contract.Contract
-	ContractABI abi.ABI
+	Client       *ethclient.Client
+	Instance     *contract.Contract
+	ContractABI  abi.ABI
+	epochsInADay = 720
 )
 
 func ConfigureClient() {
@@ -74,7 +75,7 @@ func LoadContractStateVariables() {
 	// Iterate over each data market contract address in the config
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketContractAddresses {
 		// Fetch snapshot submission limit for the current data market address
-		if output, err := MustQuery[*big.Int](context.Background(), func() (*big.Int, error) {
+		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
 			return Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, dataMarketAddress)
 		}); err == nil {
 			// Convert the submission limit to a string for storage in Redis
@@ -83,10 +84,72 @@ func LoadContractStateVariables() {
 			// Store the submission limit in the Redis hash table
 			err := redis.RedisClient.HSet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress.Hex(), submissionLimit).Err()
 			if err != nil {
-				log.Errorf("Failed to set submission limit for %s in Redis", dataMarketAddress.Hex())
+				log.Errorf("Failed to set submission limit for %s in Redis: %v", dataMarketAddress.Hex(), err)
+			}
+		}
+
+		// Fetch the day size for the specified data market address from contract
+		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+			return Instance.DAYSIZE(&bind.CallOpts{}, dataMarketAddress)
+		}); err == nil {
+			// Convert the day size to a string for storage in Redis
+			daySize := output.String()
+
+			// Store the day size in the Redis hash table
+			err := redis.RedisClient.HSet(context.Background(), redis.GetDaySizeTableKey(), dataMarketAddress.Hex(), daySize).Err()
+			if err != nil {
+				log.Errorf("Failed to set day size for %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
 	}
+}
+
+func getExpirationTime(epochID, daySize int64) time.Time {
+	// DAY_SIZE in microseconds
+	updatedDaySize := time.Duration(daySize) * time.Microsecond
+
+	// Calculate the duration of each epoch
+	epochDuration := updatedDaySize / time.Duration(epochsInADay)
+
+	// Calculate the number of epochs left for the day
+	remainingEpochs := epochID % int64(epochsInADay)
+
+	// Calculate the expiration duration
+	expirationDuration := epochDuration * time.Duration(remainingEpochs)
+
+	// Set a buffer of 10 seconds to expire slightly earlier
+	bufferDuration := 10 * time.Second
+
+	// Calculate the expiration time by subtracting the buffer duration
+	expirationTime := time.Now().Add(expirationDuration - bufferDuration)
+
+	return expirationTime
+}
+
+func FetchCurrentDay(dataMarketAddress common.Address) (*big.Int, error) {
+	// Fetch the current day for the given data market address from Redis
+	value, err := redis.Get(context.Background(), redis.GetCurrentDayKey(dataMarketAddress.Hex()))
+	if err != nil {
+		log.Errorf("Error fetching day value for %s from Redis: %v", dataMarketAddress.Hex(), err)
+		return nil, err
+	}
+
+	if value != "" {
+		// Cache hit: return the current day value
+		currentDay := new(big.Int)
+		currentDay.SetString(value, 10)
+		return currentDay, nil
+	}
+
+	// Cache miss: fetch the current day for the specified data market address from contract
+	var currentDay *big.Int
+	if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+		return Instance.DayCounter(&bind.CallOpts{}, dataMarketAddress)
+	}); err == nil {
+		currentDay = output
+	}
+
+	return currentDay, nil
 }
 
 // isValidDataMarketAddress checks if the given address is in the DataMarketAddress list
