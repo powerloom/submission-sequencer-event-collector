@@ -274,7 +274,7 @@ func UpdateTotalSubmissionCount(ctx context.Context, epochID *big.Int, dataMarke
 	}
 
 	// Fetch day size for the specified data market address from Redis
-	daySize, err := redis.GetDaySize(ctx, epochID.Int64(), dataMarketAddress)
+	daySize, err := redis.GetDaySize(ctx, dataMarketAddress)
 	if err != nil {
 		log.Errorf("Failed to fetch day size for data market address %s: %v", dataMarketAddress, err)
 		return err
