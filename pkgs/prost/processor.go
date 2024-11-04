@@ -236,7 +236,7 @@ func getValidSubmissionKeys(ctx context.Context, epochID uint64, headers []strin
 
 	// Iterate through the list of headers
 	for _, header := range headers {
-		keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(epochID, header, dataMarketAddress)).Val()
+		keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(dataMarketAddress, epochID, header)).Val()
 		if len(keys) > 0 {
 			submissionKeys = append(submissionKeys, keys...)
 		}
@@ -251,13 +251,13 @@ func constructProjectMap(submissionKeys []string) map[string][]string {
 
 	for _, submissionKey := range submissionKeys {
 		parts := strings.Split(submissionKey, ".")
-		if len(parts) != 3 {
+		if len(parts) != 4 {
 			log.Errorln("Improper key stored in redis: ", submissionKey)
 			clients.SendFailureNotification(pkgs.ConstructProjectMap, fmt.Sprintf("Improper key stored in redis: %s", submissionKey), time.Now().String(), "High")
 			continue // skip malformed entries
 		}
 
-		projectID := parts[1]
+		projectID := parts[2]
 		projectMap[projectID] = append(projectMap[projectID], submissionKey)
 	}
 
