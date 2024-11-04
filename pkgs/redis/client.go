@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"strconv"
 	"submission-sequencer-collector/config"
 	"time"
@@ -70,9 +71,43 @@ func Set(ctx context.Context, key, value string) error {
 	return RedisClient.Set(ctx, key, value, 0).Err()
 }
 
-// use this when you want to set an expiration
+// Use this when you want to set an expiration
 func SetWithExpiration(ctx context.Context, key, value string, expiration time.Duration) error {
 	return RedisClient.Set(ctx, key, value, expiration).Err()
+}
+
+func Incr(ctx context.Context, key string) (int64, error) {
+	result, err := RedisClient.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	return result, nil
+}
+
+func IncrBy(ctx context.Context, key string, size int64) (int64, error) {
+	result, err := RedisClient.IncrBy(ctx, key, size).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	return result, nil
+}
+
+func GetDaySize(ctx context.Context, dataMarketAddress string) (*big.Int, error) {
+	// Fetch DAY_SIZE for the given data market address from Redis
+	daySizeStr, err := RedisClient.HGet(context.Background(), GetDaySizeTableKey(), dataMarketAddress).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch day size for data market address %s: %s", dataMarketAddress, err)
+	}
+
+	// Convert the day size from string to *big.Int
+	daySize, ok := new(big.Int).SetString(daySizeStr, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid day size value for data market address %s: %s", dataMarketAddress, daySizeStr)
+	}
+
+	return daySize, nil
 }
 
 // StoreEpochDetails stores the epoch ID in the master set and its associated details in Redis

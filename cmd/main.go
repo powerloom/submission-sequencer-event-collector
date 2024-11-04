@@ -5,6 +5,7 @@ import (
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/prost"
 	"submission-sequencer-collector/pkgs/redis"
+	"submission-sequencer-collector/pkgs/service"
 	"submission-sequencer-collector/pkgs/utils"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
+	go service.StartApiServer()    // Start API Server
 	go prost.StartFetchingBlocks() // Start detecting blocks
 	wg.Wait()
 }

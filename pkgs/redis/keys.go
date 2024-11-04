@@ -6,8 +6,16 @@ import (
 	"submission-sequencer-collector/pkgs"
 )
 
+func GetDaySizeTableKey() string {
+	return pkgs.DaySizeTableKey
+}
+
 func GetSubmissionLimitTableKey() string {
 	return pkgs.SubmissionLimitTableKey
+}
+
+func GetCurrentDayKey(dataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s", pkgs.CurrentDayKey, strings.ToLower(dataMarketAddress))
 }
 
 func EpochMarkerSet(dataMarketAddress string) string {
@@ -24,4 +32,8 @@ func SubmissionSetByHeaderKey(epoch uint64, header, dataMarketAddress string) st
 
 func BlockHashByNumber(blockNum int64) string {
 	return fmt.Sprintf("%s.%d", pkgs.BlockHashByNumberKey, blockNum)
+}
+
+func TotalSubmissionsCountKey(currentDay, DataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.TotalSubmissionCount, currentDay, DataMarketAddress)
 }
