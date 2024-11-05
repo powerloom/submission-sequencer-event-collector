@@ -28,7 +28,7 @@ type EpochMarkerDetails struct {
 type SubmissionDetails struct {
 	DataMarketAddress string
 	EpochID           *big.Int
-	ProjectMap        map[string][]string // ProjectID -> SubmissionKeys
+	Batch             map[string][]string // ProjectID -> SubmissionKeys
 }
 
 // ProcessEvents processes logs for the given block and handles the EpochReleased event
@@ -114,6 +114,7 @@ func ProcessEvents(block *types.Block) {
 func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 	// Get the current block number
 	currentBlockNum := currentBlock.Number().Int64()
+	log.Infof("Starting batch preparation check for block number: %d", currentBlockNum)
 
 	var wg sync.WaitGroup
 
@@ -123,7 +124,8 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 
 		go func(dataMarketAddress string) {
 			defer wg.Done()
-			log.Infof("Processing started for data market address: %s", dataMarketAddress)
+
+			log.Infof("🔄 Processing started for data market address %s at block number: %d", dataMarketAddress, currentBlockNum)
 
 			// Fetch all the epoch marker keys from Redis for this data market address
 			epochMarkerKeys, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
@@ -151,7 +153,7 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 
 				// Check if the current block number matches the submission limit block number for this epoch
 				if currentBlockNum == epochMarkerDetails.SubmissionLimitBlockNumber {
-					log.Infof("Triggering batch preparation for epoch %s in data market %s", epochKey, dataMarketAddress)
+					log.Infof("🚀 Triggering batch preparation for epochID %s in data market address %s at submission limit block number: %d", epochKey, dataMarketAddress, currentBlockNum)
 
 					// Convert the epoch ID string to big.Int for further processing
 					epochID, ok := big.NewInt(0).SetString(epochKey, 10)
@@ -164,7 +166,7 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 					go triggerBatchPreparation(dataMarketAddress, epochID, epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum)
 				}
 			}
-			log.Infof("Completed processing for data market address: %s", dataMarketAddress)
+			log.Infof("✅ Completed processing for data market address %s at block number: %d", dataMarketAddress, currentBlockNum)
 		}(dataMarketAddress) // Pass data market address to avoid closure issues
 	}
 
@@ -213,28 +215,34 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	// Construct the project map [ProjectID -> SubmissionKeys]
 	projectMap := constructProjectMap(submissionKeys)
 
-	// Create an instance of submission details
-	submissionDetails := SubmissionDetails{
-		EpochID:           epochID,
-		ProjectMap:        projectMap,
-		DataMarketAddress: dataMarketAddress,
+	// Arrange the projectMap into batches of submission keys
+	batches := arrangeSubmissionKeysInBatches(projectMap)
+	log.Infof("🔄 Arranged %d batches of submission keys for processing", len(batches))
+
+	for _, batch := range batches {
+		// Create an instance of submission details
+		submissionDetails := SubmissionDetails{
+			EpochID:           epochID,
+			Batch:             batch,
+			DataMarketAddress: dataMarketAddress,
+		}
+
+		// Serialize the struct to JSON
+		jsonData, err := json.Marshal(submissionDetails)
+		if err != nil {
+			log.Fatalf("Failed to serialize submission details for batch %v of epochID %s in data market address %s: %s", batch, epochID.String(), dataMarketAddress, err)
+		}
+
+		// Push the serialized data to Redis
+		err = redis.RedisClient.LPush(context.Background(), "finalizerQueue", jsonData).Err()
+		if err != nil {
+			log.Fatalf("Error pushing data to Redis for batch %v of epochID %s in data market address %s: %s", batch, epochID.String(), dataMarketAddress, err)
+		}
+
+		log.Infof("✅ Batch %v pushed to Redis successfully for epochID %s in data market address %s", batch, epochID.String(), dataMarketAddress)
 	}
 
-	// Serialize the struct to JSON
-	jsonData, err := json.Marshal(submissionDetails)
-	if err != nil {
-		log.Fatalf("Failed to serialize submission details for epochID %s in data market address %s: %s", epochID.String(), dataMarketAddress, err)
-	}
-
-	// Push the serialized data to Redis
-	err = redis.RedisClient.LPush(context.Background(), "finalizerQueue", jsonData).Err()
-	if err != nil {
-		log.Fatalf("Error pushing data to Redis for epochID %s in data market address %s: %s", epochID.String(), dataMarketAddress, err)
-	}
-
-	log.Infof("✅ Submission details pushed to Redis successfully for epochID %s in data market address %s", epochID.String(), dataMarketAddress)
-
-	// Remove the epochID and its details from Redis after processing
+	// Remove the epochID and its details from Redis after processing all batches
 	if err := redis.RemoveEpochFromRedis(context.Background(), dataMarketAddress, epochID.String()); err != nil {
 		log.Errorf("Error removing epochID %s from Redis for data market %s: %s", epochID.String(), dataMarketAddress, err)
 	}
@@ -272,6 +280,29 @@ func constructProjectMap(submissionKeys []string) map[string][]string {
 	}
 
 	return projectMap
+}
+
+func arrangeSubmissionKeysInBatches(projectMap map[string][]string) []map[string][]string {
+	batchSize := config.SettingsObj.BatchSize // Maximum number of batches
+	batches := make([]map[string][]string, 0) // Initialize an empty slice for storing batches
+	count := 0                                // Keeps track of the number of batches added
+
+	// Iterate over each project's submission keys
+	for projectID, submissionKeys := range projectMap {
+		if count >= batchSize { // Stop if batchSize is reached
+			break
+		}
+
+		// Create a new batch for the current project
+		batch := make(map[string][]string)
+		batch[projectID] = submissionKeys
+
+		// Add the batch to the list
+		batches = append(batches, batch)
+		count++
+	}
+
+	return batches
 }
 
 // Calculate and update total submission count for a data market address

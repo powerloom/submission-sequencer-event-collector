@@ -21,6 +21,7 @@ type Settings struct {
 	SlackReportingUrl           string
 	DataMarketAddresses         []string
 	DataMarketContractAddresses []common.Address
+	BatchSize                   int
 	BlockTime                   int
 	HttpTimeout                 int
 }
@@ -51,6 +52,12 @@ func LoadConfig() {
 	for _, addr := range config.DataMarketAddresses {
 		config.DataMarketContractAddresses = append(config.DataMarketContractAddresses, common.HexToAddress(addr))
 	}
+
+	batchSize, batchSizeParseErr := strconv.Atoi(getEnv("BATCH_SIZE", ""))
+	if batchSizeParseErr != nil {
+		log.Fatalf("Failed to parse BATCH_SIZE environment variable: %v", batchSizeParseErr)
+	}
+	config.BatchSize = batchSize
 
 	blockTime, blockTimeParseErr := strconv.Atoi(getEnv("BLOCK_TIME", ""))
 	if blockTimeParseErr != nil {
