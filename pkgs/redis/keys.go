@@ -27,7 +27,7 @@ func EpochMarkerDetails(dataMarketAddress, epochID string) string {
 }
 
 func SubmissionSetByHeaderKey(dataMarketAddress string, epoch uint64, header string) string {
-	return fmt.Sprintf("%s.%d.%s", strings.ToLower(dataMarketAddress), epoch, header)
+	return fmt.Sprintf("%s.%s.%d.%s", pkgs.CollectorKey, strings.ToLower(dataMarketAddress), epoch, header)
 }
 
 func BlockHashByNumber(blockNum int64) string {

@@ -13,6 +13,7 @@ const (
 const (
 	CurrentDayKey           = "CurrentDayKey"
 	DaySizeTableKey         = "DaySizeTableKey"
+	CollectorKey            = "SnapshotCollector"
 	EpochMarkerSetKey       = "EpochMarkerSetKey"
 	EpochMarkerDetailsKey   = "EpochMarkerDetailsKey"
 	BlockHashByNumberKey    = "BlockHashByNumberKey"
