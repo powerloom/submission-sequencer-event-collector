@@ -19,6 +19,8 @@ type Settings struct {
 	RedisDB                     string
 	AuthReadToken               string
 	SlackReportingUrl           string
+	TxRelayerUrl                string
+	TxRelayerAuthWriteToken     string
 	DataMarketAddresses         []string
 	DataMarketContractAddresses []common.Address
 	BatchSize                   int
@@ -39,14 +41,16 @@ func LoadConfig() {
 	}
 
 	config := Settings{
-		ClientUrl:           getEnv("PROST_RPC_URL", ""),
-		ContractAddress:     getEnv("PROTOCOL_STATE_CONTRACT", ""),
-		RedisHost:           getEnv("REDIS_HOST", ""),
-		RedisPort:           getEnv("REDIS_PORT", ""),
-		RedisDB:             getEnv("REDIS_DB", ""),
-		AuthReadToken:       getEnv("AUTH_READ_TOKEN", ""),
-		SlackReportingUrl:   getEnv("SLACK_REPORTING_URL", ""),
-		DataMarketAddresses: dataMarketAddressesList,
+		ClientUrl:               getEnv("PROST_RPC_URL", ""),
+		ContractAddress:         getEnv("PROTOCOL_STATE_CONTRACT", ""),
+		RedisHost:               getEnv("REDIS_HOST", ""),
+		RedisPort:               getEnv("REDIS_PORT", ""),
+		RedisDB:                 getEnv("REDIS_DB", ""),
+		AuthReadToken:           getEnv("AUTH_READ_TOKEN", ""),
+		SlackReportingUrl:       getEnv("SLACK_REPORTING_URL", ""),
+		TxRelayerUrl:            getEnv("TX_RELAYER_URL", ""),
+		TxRelayerAuthWriteToken: getEnv("TX_RELAYER_AUTH_WRITE_TOKEN", ""),
+		DataMarketAddresses:     dataMarketAddressesList,
 	}
 
 	for _, addr := range config.DataMarketAddresses {

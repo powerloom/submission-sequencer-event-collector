@@ -6,6 +6,7 @@ const (
 	StartFetchingBlocks       = "StartFetchingBlocks"
 	ProcessEvents             = "ProcessEvents"
 	ConstructProjectMap       = "ConstructProjectMap"
+	SendSubmissionBatchSize   = "SendSubmissionBatchSize"
 	UpdateSlotSubmissionCount = "UpdateSlotSubmissionCount"
 )
 
