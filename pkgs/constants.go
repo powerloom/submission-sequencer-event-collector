@@ -3,10 +3,10 @@ package pkgs
 // Process Name Constants
 // process : identifier
 const (
-	StartFetchingBlocks        = "StartFetchingBlocks"
-	ProcessEvents              = "ProcessEvents"
-	ConstructProjectMap        = "ConstructProjectMap"
-	UpdateTotalSubmissionCount = "UpdateTotalSubmissionCount"
+	StartFetchingBlocks       = "StartFetchingBlocks"
+	ProcessEvents             = "ProcessEvents"
+	ConstructProjectMap       = "ConstructProjectMap"
+	UpdateSlotSubmissionCount = "UpdateSlotSubmissionCount"
 )
 
 // General Key Constants
@@ -18,5 +18,5 @@ const (
 	EpochMarkerDetailsKey   = "EpochMarkerDetailsKey"
 	BlockHashByNumberKey    = "BlockHashByNumberKey"
 	SubmissionLimitTableKey = "SubmissionLimitTable"
-	TotalSubmissionCount    = "TotalSubmissionCount"
+	SlotSubmissionsKey      = "SlotSubmissionsKey"
 )

@@ -3,13 +3,16 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/prost"
 	"submission-sequencer-collector/pkgs/redis"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -33,6 +36,7 @@ import (
 
 type SubmissionsRequest struct {
 	Token             string `json:"token"`
+	SlotID            int    `json:"slot_id"`
 	PastDays          int    `json:"past_days"`
 	DataMarketAddress string `json:"data_market_address"`
 }
@@ -54,24 +58,22 @@ type Response[K any] struct {
 	RequestID string      `json:"request_id"`
 }
 
-func getDailySubmissions(dataMarketAddress string, day *big.Int) int64 {
-	val, err := redis.Get(context.Background(), redis.TotalSubmissionsCountKey(day.String(), dataMarketAddress))
-	if err != nil {
-		log.Errorln("Error fetching submissions from Redis:", err.Error())
-		return 0
-	}
-
-	if val != "" {
-		submissions := new(big.Int)
-		// Parse the value from Redis into big.Int
-		if _, ok := submissions.SetString(val, 10); ok {
-			return submissions.Int64()
+func getDailySubmissions(dataMarketAddress string, slotID int, day *big.Int) int64 {
+	if val, err := redis.Get(context.Background(), redis.SlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())); err != nil || val == "" {
+		subs, err := prost.MustQuery[*big.Int](context.Background(), func() (*big.Int, error) {
+			subs, err := prost.Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), day)
+			return subs, err
+		})
+		if err != nil {
+			log.Errorln("Could not fetch submissions from contract: ", err.Error())
+			return 0
 		}
 
-		log.Errorln("Failed to parse submissions value to integer")
+		return subs.Int64()
+	} else {
+		submissions, _ := new(big.Int).SetString(val, 10)
+		return submissions.Int64()
 	}
-
-	return 0
 }
 
 // handleTotalSubmissions godoc
@@ -82,7 +84,7 @@ func getDailySubmissions(dataMarketAddress string, day *big.Int) int64 {
 // @Produce json
 // @Param request body SubmissionsRequest true "Submissions request payload"
 // @Success 200 {object} Response[ResponseArray[DailySubmissions]]
-// @Failure 400 {string} string "Bad Request, past days less than 1, or invalid data market address"
+// @Failure 400 {string} string "Bad Request, past days less than 1, invalid slotID or invalid data market address"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Router /totalSubmissions [post]
 func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +101,12 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 
 	if request.PastDays < 1 {
 		http.Error(w, "Past days should be at least 1", http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
 		return
 	}
 
@@ -132,7 +140,7 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 		go func(i int) {
 			defer wg.Done()
 			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
-			subs := getDailySubmissions(request.DataMarketAddress, day)
+			subs := getDailySubmissions(request.DataMarketAddress, request.SlotID, day)
 			ch <- DailySubmissions{Day: int(day.Int64()), Submissions: subs}
 		}(i)
 	}

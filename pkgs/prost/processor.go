@@ -104,6 +104,8 @@ func ProcessEvents(block *types.Block) {
 					clients.SendFailureNotification(pkgs.ProcessEvents, errorMessage, time.Now().String(), "High")
 					log.Errorf("Error occurred: %s", errorMessage)
 				}
+
+				log.Debugf("Successfully stored epoch marker details for epochID %s in data market address %s", newEpochID.String(), dataMarketAddress)
 			}
 		}
 	}
@@ -121,6 +123,7 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 
 		go func(dataMarketAddress string) {
 			defer wg.Done()
+			log.Infof("Processing started for data market address: %s", dataMarketAddress)
 
 			// Fetch all the epoch marker keys from Redis for this data market address
 			epochMarkerKeys, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
@@ -128,6 +131,8 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 				log.Errorf("Failed to fetch epoch markers from Redis for data market %s: %s", dataMarketAddress, err)
 				return
 			}
+
+			log.Infof("Fetched epoch marker keys for data market address %s: %v", dataMarketAddress, epochMarkerKeys)
 
 			// Process each epoch marker key for this data market address
 			for _, epochKey := range epochMarkerKeys {
@@ -159,6 +164,7 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 					go triggerBatchPreparation(dataMarketAddress, epochID, epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum)
 				}
 			}
+			log.Infof("Completed processing for data market address: %s", dataMarketAddress)
 		}(dataMarketAddress) // Pass data market address to avoid closure issues
 	}
 
@@ -189,21 +195,23 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		headers = append(headers, blockHash.Hex())
 	}
 
-	log.Debugf("Collected headers for epoch %s in data market %s: %v", epochID.String(), dataMarketAddress, headers)
+	log.Infof("📦 Collected headers for epoch %s in data market address %s: %v", epochID.String(), dataMarketAddress, headers)
 
 	// Fetch valid submission keys for the epoch
-	submissionkeys, err := getValidSubmissionKeys(context.Background(), epochID.Uint64(), headers, dataMarketAddress)
+	submissionKeys, err := getValidSubmissionKeys(context.Background(), epochID.Uint64(), headers, dataMarketAddress)
 	if err != nil {
-		log.Errorf("Failed to fetch submission keys for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err.Error())
+		log.Errorf("Failed to fetch submission keys for epochID %s in data market address %s: %s", epochID.String(), dataMarketAddress, err.Error())
 	}
 
+	log.Infof("🔑 Successfully fetched submission keys for epochID %s in data market address %s: %v", epochID.String(), dataMarketAddress, submissionKeys)
+
 	// Update total submission count for the specified data market address
-	if err := UpdateTotalSubmissionCount(context.Background(), epochID, dataMarketAddress, len(submissionkeys)); err != nil {
-		log.Errorf("Failed to update total submission count for data market address %s: %s", dataMarketAddress, err.Error())
+	if err := UpdateSlotSubmissionCount(context.Background(), epochID, dataMarketAddress, submissionKeys); err != nil {
+		log.Errorf("Failed to update slot submission counts for data market address %s: %s", dataMarketAddress, err.Error())
 	}
 
 	// Construct the project map [ProjectID -> SubmissionKeys]
-	projectMap := constructProjectMap(submissionkeys)
+	projectMap := constructProjectMap(submissionKeys)
 
 	// Create an instance of submission details
 	submissionDetails := SubmissionDetails{
@@ -215,18 +223,20 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	// Serialize the struct to JSON
 	jsonData, err := json.Marshal(submissionDetails)
 	if err != nil {
-		log.Fatalf("Failed to serialize submission details for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err)
+		log.Fatalf("Failed to serialize submission details for epochID %s in data market address %s: %s", epochID.String(), dataMarketAddress, err)
 	}
 
 	// Push the serialized data to Redis
 	err = redis.RedisClient.LPush(context.Background(), "finalizerQueue", jsonData).Err()
 	if err != nil {
-		log.Fatalf("Error pushing data to Redis for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err)
+		log.Fatalf("Error pushing data to Redis for epochID %s in data market address %s: %s", epochID.String(), dataMarketAddress, err)
 	}
+
+	log.Infof("✅ Submission details pushed to Redis successfully for epochID %s in data market address %s", epochID.String(), dataMarketAddress)
 
 	// Remove the epochID and its details from Redis after processing
 	if err := redis.RemoveEpochFromRedis(context.Background(), dataMarketAddress, epochID.String()); err != nil {
-		log.Errorf("Error removing epoch %s from Redis for data market %s: %s", epochID.String(), dataMarketAddress, err)
+		log.Errorf("Error removing epochID %s from Redis for data market %s: %s", epochID.String(), dataMarketAddress, err)
 	}
 }
 
@@ -265,7 +275,7 @@ func constructProjectMap(submissionKeys []string) map[string][]string {
 }
 
 // Calculate and update total submission count for a data market address
-func UpdateTotalSubmissionCount(ctx context.Context, epochID *big.Int, dataMarketAddress string, submissionCount int) error {
+func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarketAddress string, submissionKeys []string) error {
 	// Fetch the current day
 	currentDay, err := FetchCurrentDay(common.HexToAddress(dataMarketAddress))
 	if err != nil {
@@ -288,16 +298,19 @@ func UpdateTotalSubmissionCount(ctx context.Context, epochID *big.Int, dataMarke
 		return fmt.Errorf("failed to cache day value for %s in Redis: %v", dataMarketAddress, err)
 	}
 
-	// Increment the total submissions count in Redis by the length of submissionKeys
-	if submissionCount > 0 {
-		count, err := redis.IncrBy(ctx, redis.TotalSubmissionsCountKey(currentDay.String(), dataMarketAddress), int64(submissionCount))
+	// Increment the slot submissions count for a data market in Redis
+	for _, submissionKey := range submissionKeys {
+		parts := strings.Split(submissionKey, ".")
+		slotID := parts[3]
+
+		count, err := redis.Incr(context.Background(), redis.SlotSubmissionKey(dataMarketAddress, slotID, currentDay.String()))
 		if err != nil {
-			clients.SendFailureNotification(pkgs.UpdateTotalSubmissionCount, fmt.Sprintf("Failed to increment total submissions count for data market address %s: %s", dataMarketAddress, err.Error()), time.Now().String(), "High")
-			log.Errorf("Error incrementing total submissions count for data market address %s: %v", dataMarketAddress, err)
+			clients.SendFailureNotification(pkgs.UpdateSlotSubmissionCount, fmt.Sprintf("Failed to increment submission count for slotID %s in data market address %s: %s", slotID, dataMarketAddress, err.Error()), time.Now().String(), "High")
+			log.Errorf("Error incrementing submission count for slotID %s in data market address %s: %v", slotID, dataMarketAddress, err)
 			return err
 		}
 
-		log.Debugf("Total submission count for data market address %s: %d", dataMarketAddress, count)
+		log.Infof("📈 Slot submission count updated successfully for slotID %s in data market address %s: %d", slotID, dataMarketAddress, count)
 	}
 
 	return nil
