@@ -292,23 +292,28 @@ func constructProjectMap(submissionKeys []string) map[string][]string {
 }
 
 func arrangeSubmissionKeysInBatches(projectMap map[string][]string) []map[string][]string {
-	batchSize := config.SettingsObj.BatchSize // Maximum number of batches
-	batches := make([]map[string][]string, 0) // Initialize an empty slice for storing batches
-	count := 0                                // Keeps track of the number of batches added
+	batchSize := config.SettingsObj.BatchSize // Target number of project IDs per batch
+	batches := make([]map[string][]string, 0) // Initialize a slice for storing batches
+	currentBatch := make(map[string][]string) // Current batch being filled
+	projectCount := 0                         // Track the number of project IDs in the current batch
 
-	// Iterate over each project's submission keys
 	for projectID, submissionKeys := range projectMap {
-		if count >= batchSize { // Stop if batchSize is reached
-			break
+		// Add the project to the current batch
+		currentBatch[projectID] = submissionKeys
+		projectCount++
+
+		// If we've reached the batch size, finalize the current batch
+		if projectCount == batchSize {
+			// Add the current batch to the list of batches and reset for a new batch
+			batches = append(batches, currentBatch)
+			currentBatch = make(map[string][]string) // Start a new batch
+			projectCount = 0                         // Reset count for the new batch
 		}
+	}
 
-		// Create a new batch for the current project
-		batch := make(map[string][]string)
-		batch[projectID] = submissionKeys
-
-		// Add the batch to the list
-		batches = append(batches, batch)
-		count++
+	// If there are leftover projects that didn't fill a complete batch, add them as well
+	if projectCount > 0 {
+		batches = append(batches, currentBatch)
 	}
 
 	return batches
