@@ -85,15 +85,6 @@ func Incr(ctx context.Context, key string) (int64, error) {
 	return result, nil
 }
 
-func IncrBy(ctx context.Context, key string, size int64) (int64, error) {
-	result, err := RedisClient.IncrBy(ctx, key, size).Result()
-	if err != nil {
-		return 0, err
-	}
-
-	return result, nil
-}
-
 func GetDaySize(ctx context.Context, dataMarketAddress string) (*big.Int, error) {
 	// Fetch DAY_SIZE for the given data market address from Redis
 	daySizeStr, err := RedisClient.HGet(context.Background(), GetDaySizeTableKey(), dataMarketAddress).Result()

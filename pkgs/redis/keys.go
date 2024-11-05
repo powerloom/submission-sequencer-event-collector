@@ -30,10 +30,10 @@ func SubmissionSetByHeaderKey(dataMarketAddress string, epoch uint64, header str
 	return fmt.Sprintf("%s.%s.%d.%s", pkgs.CollectorKey, strings.ToLower(dataMarketAddress), epoch, header)
 }
 
-func BlockHashByNumber(blockNum int64) string {
-	return fmt.Sprintf("%s.%d", pkgs.BlockHashByNumberKey, blockNum)
+func SlotSubmissionKey(dataMarketAddress string, slotID, currentDay string) string {
+	return fmt.Sprintf("%s.%s.%s.%s", pkgs.SlotSubmissionsKey, strings.ToLower(dataMarketAddress), currentDay, slotID)
 }
 
-func TotalSubmissionsCountKey(currentDay, DataMarketAddress string) string {
-	return fmt.Sprintf("%s.%s.%s", pkgs.TotalSubmissionCount, currentDay, DataMarketAddress)
+func BlockHashByNumber(blockNum int64) string {
+	return fmt.Sprintf("%s.%d", pkgs.BlockHashByNumberKey, blockNum)
 }

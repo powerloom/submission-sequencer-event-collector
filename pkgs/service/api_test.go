@@ -57,11 +57,11 @@ func TestHandleTotalSubmissions(t *testing.T) {
 	redis.Set(context.Background(), redis.GetCurrentDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "5")
 
 	// Set total submission count for each day
-	redis.Set(context.Background(), redis.TotalSubmissionsCountKey("5", "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "100")
-	redis.Set(context.Background(), redis.TotalSubmissionsCountKey("4", "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "80")
-	redis.Set(context.Background(), redis.TotalSubmissionsCountKey("3", "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "150")
-	redis.Set(context.Background(), redis.TotalSubmissionsCountKey("2", "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "60")
-	redis.Set(context.Background(), redis.TotalSubmissionsCountKey("1", "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "50")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "5"), "100")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "4"), "80")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "3"), "150")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "2"), "60")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "1"), "50")
 
 	tests := []struct {
 		name       string
@@ -71,7 +71,7 @@ func TestHandleTotalSubmissions(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, past days 1",
-			body:       `{"token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
 				{Day: 5, Submissions: 100},
@@ -79,7 +79,7 @@ func TestHandleTotalSubmissions(t *testing.T) {
 		},
 		{
 			name:       "Valid token, past days 3",
-			body:       `{"token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
 				{Day: 5, Submissions: 100},
@@ -89,7 +89,7 @@ func TestHandleTotalSubmissions(t *testing.T) {
 		},
 		{
 			name:       "Valid token, total submissions till date",
-			body:       `{"token": "valid-token", "past_days": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
 				{Day: 5, Submissions: 100},
@@ -101,19 +101,19 @@ func TestHandleTotalSubmissions(t *testing.T) {
 		},
 		{
 			name:       "Valid token, negative past days",
-			body:       `{"token": "valid-token", "past_days": -1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slot_id": 1, "token": "valid-token", "past_days": -1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slot_id": 1, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   nil,
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},

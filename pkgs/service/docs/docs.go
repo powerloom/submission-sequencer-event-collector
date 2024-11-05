@@ -52,7 +52,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request, past days less than 1, or invalid data market address",
+                        "description": "Bad Request, past days less than 1, invalid slotID or invalid data market address",
                         "schema": {
                             "type": "string"
                         }
@@ -111,6 +111,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "past_days": {
+                    "type": "integer"
+                },
+                "slot_id": {
                     "type": "integer"
                 },
                 "token": {
