@@ -219,6 +219,15 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	batches := arrangeSubmissionKeysInBatches(projectMap)
 	log.Infof("🔄 Arranged %d batches of submission keys for processing", len(batches))
 
+	// Send the size of the batches to the external tx relayer service
+	if err := clients.SendSubmissionBatchSize(dataMarketAddress, epochID, len(batches)); err != nil {
+		errorMsg := fmt.Sprintf("Error sending submission batch size for epochID %s: %v", epochID, err)
+		clients.SendFailureNotification(pkgs.SendSubmissionBatchSize, errorMsg, time.Now().String(), "Medium")
+		log.Errorln(errorMsg)
+	}
+
+	// Iterate over all the batches, construct submission details for each batch,
+	// serialize them to JSON, and push the serialized data to Redis for further processing
 	for _, batch := range batches {
 		// Create an instance of submission details
 		submissionDetails := SubmissionDetails{

@@ -21,6 +21,9 @@ func main() {
 	// Initialize reporting service
 	clients.InitializeReportingClient(config.SettingsObj.SlackReportingUrl, 5*time.Second)
 
+	// Initialize tx relayer service
+	clients.InitializeTxClient(config.SettingsObj.TxRelayerUrl, time.Duration(config.SettingsObj.HttpTimeout)*time.Second)
+
 	// Setup redis
 	redis.RedisClient = redis.NewRedisClient()
 
