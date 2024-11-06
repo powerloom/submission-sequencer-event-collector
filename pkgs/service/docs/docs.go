@@ -20,6 +20,52 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/eligibleSubmissions": {
+            "post": {
+                "description": "Retrieves eligible submission counts for a specific data market address across a specified number of past days",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Submissions"
+                ],
+                "summary": "Get eligible submissions",
+                "parameters": [
+                    {
+                        "description": "Submissions request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.SubmissionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_ResponseArray-service_DailySubmissions"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1, invalid slotID or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/totalSubmissions": {
             "post": {
                 "description": "Retrieves total submission counts for a specific data market address across a specified number of past days",
@@ -52,7 +98,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request, past days less than 1, invalid slotID or invalid data market address",
+                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1, invalid slotID or invalid data market address)",
                         "schema": {
                             "type": "string"
                         }

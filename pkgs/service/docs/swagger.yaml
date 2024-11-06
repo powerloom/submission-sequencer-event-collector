@@ -45,6 +45,38 @@ info:
   title: My API Documentation
   version: "1.0"
 paths:
+  /eligibleSubmissions:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves eligible submission counts for a specific data market
+        address across a specified number of past days
+      parameters:
+      - description: Submissions request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.SubmissionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_ResponseArray-service_DailySubmissions'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
+            invalid slotID or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get eligible submissions
+      tags:
+      - Submissions
   /totalSubmissions:
     post:
       consumes:
@@ -66,8 +98,8 @@ paths:
           schema:
             $ref: '#/definitions/service.Response-service_ResponseArray-service_DailySubmissions'
         "400":
-          description: Bad Request, past days less than 1, invalid slotID or invalid
-            data market address
+          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
+            invalid slotID or invalid data market address)'
           schema:
             type: string
         "401":
