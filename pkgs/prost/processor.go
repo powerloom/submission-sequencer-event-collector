@@ -28,6 +28,7 @@ type EpochMarkerDetails struct {
 type SubmissionDetails struct {
 	DataMarketAddress string
 	EpochID           *big.Int
+	BatchID           int
 	Batch             map[string][]string // ProjectID -> SubmissionKeys
 }
 
@@ -246,6 +247,7 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		// Create an instance of submission details
 		submissionDetails := SubmissionDetails{
 			EpochID:           epochID,
+			BatchID:           i + 1,
 			Batch:             batch,
 			DataMarketAddress: dataMarketAddress,
 		}
