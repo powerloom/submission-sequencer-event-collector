@@ -52,7 +52,9 @@ func LoadConfig() {
 		TxRelayerAuthWriteToken: getEnv("TX_RELAYER_AUTH_WRITE_TOKEN", ""),
 		DataMarketAddresses:     dataMarketAddressesList,
 	}
-
+	if config.AuthReadToken == "" {
+		log.Fatalf("AUTH_READ_TOKEN environment variable is not set")
+	}
 	for _, addr := range config.DataMarketAddresses {
 		config.DataMarketContractAddresses = append(config.DataMarketContractAddresses, common.HexToAddress(addr))
 	}
