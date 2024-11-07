@@ -41,3 +41,7 @@ func BlockHashByNumber(blockNum int64) string {
 func EligibleSlotSubmissionKey(dataMarketAddress string, slotID, currentDay string) string {
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.EligibleSlotSubmissionsKey, strings.ToLower(dataMarketAddress), currentDay, slotID)
 }
+
+func BatchSubmissionKey(dataMarketAddress, epochID, batchID string) string {
+	return fmt.Sprintf("%s.%s.%s.%s", pkgs.BatchSubmissionsKey, strings.ToLower(dataMarketAddress), epochID, batchID)
+}

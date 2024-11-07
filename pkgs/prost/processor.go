@@ -255,7 +255,7 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		// Serialize the struct to JSON
 		jsonData, err := json.Marshal(submissionDetails)
 		if err != nil {
-			log.Fatalf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %s", i+1, epochID.String(), dataMarketAddress, err)
+			log.Fatalf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
 		}
 
 		// Push the serialized data to Redis
@@ -264,7 +264,22 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 			log.Fatalf("Error pushing submission details of batch %d to Redis for epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
 		}
 
-		log.Infof("✅ Batch %d successfully pushed to Redis for epoch %s in data market %s", i+1, epochID.String(), dataMarketAddress)
+		// Serialize the batch details to JSON
+		batchJsonData, err := json.Marshal(batch)
+		if err != nil {
+			log.Fatalf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+		}
+
+		// Convert the batch ID to a big integer
+		batchID := big.NewInt(int64(i + 1))
+
+		// Store the batch details with a key generated from dataMarketAddress, epochID, and batchID
+		if err := redis.StoreBatchDetails(context.Background(), dataMarketAddress, epochID.String(), batchID.String(), string(batchJsonData)); err != nil {
+			log.Errorf("Failed to store details for batch %d of epoch %s in data market %s: %v", batchID.Int64(), epochID.String(), dataMarketAddress, err)
+			continue
+		}
+
+		log.Infof("✅ Batch %d successfully pushed to Redis and stored for epoch %s in data market %s", batchID.Int64(), epochID.String(), dataMarketAddress)
 	}
 
 	// Remove the epochID and its details from Redis after processing all batches
