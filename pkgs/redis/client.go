@@ -89,13 +89,13 @@ func GetDaySize(ctx context.Context, dataMarketAddress string) (*big.Int, error)
 	// Fetch DAY_SIZE for the given data market address from Redis
 	daySizeStr, err := RedisClient.HGet(context.Background(), GetDaySizeTableKey(), dataMarketAddress).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch day size for data market address %s: %s", dataMarketAddress, err)
+		return nil, fmt.Errorf("failed to fetch day size for data market %s: %s", dataMarketAddress, err)
 	}
 
 	// Convert the day size from string to *big.Int
 	daySize, ok := new(big.Int).SetString(daySizeStr, 10)
 	if !ok {
-		return nil, fmt.Errorf("invalid day size value for data market address %s: %s", dataMarketAddress, daySizeStr)
+		return nil, fmt.Errorf("invalid day size value for data market %s: %s", dataMarketAddress, daySizeStr)
 	}
 
 	return daySize, nil
@@ -105,12 +105,12 @@ func GetDaySize(ctx context.Context, dataMarketAddress string) (*big.Int, error)
 func StoreEpochDetails(ctx context.Context, dataMarketAddress, epochID, details string) error {
 	// Store the epoch ID in the master set
 	if err := AddToSet(ctx, EpochMarkerSet(dataMarketAddress), epochID); err != nil {
-		return fmt.Errorf("failed to add epoch ID %s to master set for data market %s: %w", epochID, dataMarketAddress, err)
+		return fmt.Errorf("failed to add epoch %s to master set for data market %s: %w", epochID, dataMarketAddress, err)
 	}
 
 	// Store the details for the specified epochID related to the given data market in Redis
 	if err := Set(ctx, EpochMarkerDetails(dataMarketAddress, epochID), details); err != nil {
-		return fmt.Errorf("failed to store epoch marker details in Redis: %w", err)
+		return fmt.Errorf("failed to store epoch marker details for epoch %s, data market %s in Redis: %w", epochID, dataMarketAddress, err)
 	}
 
 	return nil
@@ -119,11 +119,11 @@ func StoreEpochDetails(ctx context.Context, dataMarketAddress, epochID, details 
 func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string) error {
 	// Remove the epoch marker from the master set
 	if err := RedisClient.SRem(ctx, EpochMarkerSet(dataMarketAddress), epochID).Err(); err != nil {
-		return fmt.Errorf("failed to delete epoch marker %s from Redis: %w", epochID, err)
+		return fmt.Errorf("failed to delete epoch %s for data market %s from Redis: %w", epochID, dataMarketAddress, err)
 	}
 
 	if expireErr := RedisClient.Expire(ctx, EpochMarkerDetails(dataMarketAddress, epochID), 30*time.Minute).Err(); expireErr != nil {
-		return fmt.Errorf("failed to set expiry for epoch details after removal failure: %w", expireErr)
+		return fmt.Errorf("failed to set expiry for epoch marker details of epoch %s, data market %s: %w", epochID, dataMarketAddress, expireErr)
 	}
 
 	return nil

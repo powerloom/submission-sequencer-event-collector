@@ -84,7 +84,7 @@ func LoadContractStateVariables() {
 			// Store the submission limit in the Redis hash table
 			err := redis.RedisClient.HSet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress.Hex(), submissionLimit).Err()
 			if err != nil {
-				log.Errorf("Failed to set submission limit for %s in Redis: %v", dataMarketAddress.Hex(), err)
+				log.Errorf("Failed to set submission limit for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
 
@@ -98,7 +98,7 @@ func LoadContractStateVariables() {
 			// Store the day size in the Redis hash table
 			err := redis.RedisClient.HSet(context.Background(), redis.GetDaySizeTableKey(), dataMarketAddress.Hex(), daySize).Err()
 			if err != nil {
-				log.Errorf("Failed to set day size for %s in Redis: %v", dataMarketAddress.Hex(), err)
+				log.Errorf("Failed to set day size for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
 	}
@@ -130,7 +130,7 @@ func FetchCurrentDay(dataMarketAddress common.Address) (*big.Int, error) {
 	// Fetch the current day for the given data market address from Redis
 	value, err := redis.Get(context.Background(), redis.GetCurrentDayKey(dataMarketAddress.Hex()))
 	if err != nil {
-		log.Errorf("Error fetching day value for %s from Redis: %v", dataMarketAddress.Hex(), err)
+		log.Errorf("Error fetching day value for data market %s from Redis: %v", dataMarketAddress.Hex(), err)
 		return nil, err
 	}
 
@@ -168,14 +168,14 @@ func calculateSubmissionLimitBlock(dataMarketAddress string, epochReleaseBlock *
 	// Fetch the submission limit for the given data market address from Redis
 	submissionLimitStr, err := redis.RedisClient.HGet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress).Result()
 	if err != nil {
-		log.Errorf("Error fetching submission limit for data market address %s: %s", dataMarketAddress, err)
+		log.Errorf("Error fetching submission limit for data market %s: %s", dataMarketAddress, err)
 		return nil, err
 	}
 
 	// Convert the submission limit from string to *big.Int
 	submissionLimit, ok := new(big.Int).SetString(submissionLimitStr, 10)
 	if !ok {
-		log.Errorf("Invalid submission limit value for data market address %s: %s", dataMarketAddress, submissionLimitStr)
+		log.Errorf("Invalid submission limit value for data market %s: %s", dataMarketAddress, submissionLimitStr)
 		return nil, err
 	}
 
