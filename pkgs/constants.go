@@ -19,6 +19,7 @@ const (
 	EpochMarkerDetailsKey      = "EpochMarkerDetailsKey"
 	BlockHashByNumberKey       = "BlockHashByNumberKey"
 	SubmissionLimitTableKey    = "SubmissionLimitTable"
+	BatchSubmissionsKey        = "BatchSubmissionsKey"
 	SlotSubmissionsKey         = "SlotSubmissionsKey"
 	EligibleSlotSubmissionsKey = "EligibleSlotSubmissionsKey"
 )

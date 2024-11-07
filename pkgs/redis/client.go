@@ -128,3 +128,13 @@ func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string
 
 	return nil
 }
+
+// StoreBatchDetails saves the details of a batch submission to Redis
+func StoreBatchDetails(ctx context.Context, dataMarketAddress, epochID, batchID, details string) error {
+	// Attempt to set the batch details in Redis with an expiration time of 5 minutes
+	if err := SetWithExpiration(ctx, BatchSubmissionKey(dataMarketAddress, epochID, batchID), details, 5*time.Minute); err != nil {
+		return fmt.Errorf("failed to store details for batch %s of epoch %s, data market %s in Redis: %w", batchID, epochID, dataMarketAddress, err)
+	}
+
+	return nil
+}
