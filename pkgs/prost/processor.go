@@ -235,7 +235,7 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	log.Infof("🔄 Arranged %d batches of submission keys for epoch %s in data market %s", len(batches), epochID.String(), dataMarketAddress)
 
 	// Send the size of the batches to the external tx relayer service
-	if err = submitWithRetries(dataMarketAddress, epochID, len(batches)); err != nil {
+	if err = sendBatchSizeToRelayer(dataMarketAddress, epochID, len(batches)); err != nil {
 		log.Errorf("Failed to send submission batch size for epoch %s in data market %s: %v", epochID, dataMarketAddress, err)
 	}
 
@@ -361,6 +361,12 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		return err
 	}
 
+	// Handle day transitions and trigger updateRewards
+	if err := handleDayTransition(dataMarketAddress, currentDay); err != nil {
+		log.Errorf("Error handling day transition for data market %s: %v", dataMarketAddress, err)
+		return err
+	}
+
 	// Fetch day size for the specified data market address from Redis
 	daySize, err := redis.GetDaySize(ctx, dataMarketAddress)
 	if err != nil {
@@ -381,7 +387,8 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		parts := strings.Split(submissionKey, ".")
 		slotID := parts[3]
 
-		count, err := redis.Incr(context.Background(), redis.SlotSubmissionKey(dataMarketAddress, slotID, currentDay.String()))
+		slotSubmissionKey := redis.SlotSubmissionKey(dataMarketAddress, slotID, currentDay.String())
+		count, err := redis.Incr(context.Background(), slotSubmissionKey)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Failed to increment submission count for slotID %s, epoch %s in data market %s: %s", slotID, epochID, dataMarketAddress, err.Error())
 			clients.SendFailureNotification(pkgs.UpdateSlotSubmissionCount, errorMsg, time.Now().String(), "High")
@@ -390,12 +397,70 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		}
 
 		log.Infof("📈 Slot submission count updated successfully for slotID %s, epoch %s in data market %s: %d", slotID, epochID, dataMarketAddress, count)
+
+		// Fetch daily snapshot quota for the specified data market address from Redis
+		dailySnapshotQuota, err := redis.GetDailySnapshotQuota(ctx, dataMarketAddress)
+		if err != nil {
+			log.Errorf("Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
+			return err
+		}
+
+		// If the submission count exceeds the daily snapshot quota, add the slot submission key to the set
+		if count >= dailySnapshotQuota.Int64() {
+			if err := redis.AddToSet(ctx, redis.SlotSubmissionSetByDay(dataMarketAddress, currentDay.String()), slotSubmissionKey); err != nil {
+				clients.SendFailureNotification(pkgs.UpdateSlotSubmissionCount, err.Error(), time.Now().String(), "High")
+				log.Errorf("Failed to add slot submission key %s to set for data market %s, day %s: %v", slotSubmissionKey, dataMarketAddress, currentDay.String(), err)
+			}
+		}
 	}
 
 	return nil
 }
 
-func submitWithRetries(dataMarketAddress string, epochID *big.Int, batchSize int) error {
+func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
+	// Fetch the cached day value
+	cachedDay, err := redis.Get(context.Background(), redis.GetCurrentDayKey(dataMarketAddress))
+	if err != nil {
+		log.Errorf("Error fetching cached day value for data market %s from Redis: %v", dataMarketAddress, err)
+		return err
+	}
+
+	// Check for day transition
+	if cachedDay != "" && cachedDay != currentDay.String() {
+		log.Infof("Day transition detected for data market %s: %s -> %s", dataMarketAddress, cachedDay, currentDay)
+
+		// Calculate eligible nodes (cached day means prev day)
+		eligibleNodes, err := calculateEligibleNodes(dataMarketAddress, cachedDay)
+		if err != nil {
+			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+			return err
+		}
+
+		log.Infof("✅ Eligible nodes for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodes)
+
+		// Send the update rewards request to the external tx relayer service
+		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodes); err != nil {
+			log.Errorf("Failed to send rewards update for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func calculateEligibleNodes(dataMarketAddress string, day string) (int, error) {
+	// Fetch the count of slot submission keys that crossed the DAILY_SNAPSHOT_QUOTA
+	setKey := redis.SlotSubmissionSetByDay(dataMarketAddress, day)
+	eligibleNodesCount, err := redis.GetSetCardinality(context.Background(), setKey)
+	if err != nil {
+		log.Errorf("Failed to fetch eligible nodes for data market %s on day %s: %v", dataMarketAddress, day, err)
+		return 0, err
+	}
+
+	return eligibleNodesCount, nil
+}
+
+func sendBatchSizeToRelayer(dataMarketAddress string, epochID *big.Int, batchSize int) error {
 	// Define the operation that will be retried
 	operation := func() error {
 		// Attempt to submit the batch size
@@ -419,6 +484,36 @@ func submitWithRetries(dataMarketAddress string, epochID *big.Int, batchSize int
 	// Limit retries to 3 times within 10 seconds
 	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoffConfig, 3)); err != nil {
 		log.Errorf("Failed to submit batch size for epoch %s, data market %s after multiple retries: %v", epochID, dataMarketAddress, err)
+		return err
+	}
+
+	return nil
+}
+
+func sendUpdateRewardsToRelayer(dataMarketAddress string, slotIDs, submissionsList []*big.Int, day string, eligibleNodes int) error {
+	// Define the operation that will be retried
+	operation := func() error {
+		// Attempt to send the updateRewards request
+		err := clients.SendUpdateRewardsRequest(dataMarketAddress, slotIDs, submissionsList, day, eligibleNodes)
+		if err != nil {
+			log.Errorf("Error sending final updateRewards request for data market %s on day %s: %v. Retrying...", dataMarketAddress, day, err)
+			return err // Return error to trigger retry
+		}
+
+		log.Infof("📤 Successfully sent final updateRewards request for data market %s on day %s", dataMarketAddress, day)
+		return nil // Successful submission, no need for further retries
+	}
+
+	// Customize the backoff configuration
+	backoffConfig := backoff.NewExponentialBackOff()
+	backoffConfig.InitialInterval = 1 * time.Second // Start with a 1-second delay
+	backoffConfig.Multiplier = 1.5                  // Increase interval by 1.5x after each retry
+	backoffConfig.MaxInterval = 4 * time.Second     // Set max interval between retries
+	backoffConfig.MaxElapsedTime = 10 * time.Second // Retry for a maximum of 10 seconds
+
+	// Limit retries to a maximum of 3 attempts within 10 seconds
+	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoffConfig, 3)); err != nil {
+		log.Errorf("Failed to send final updateRewards request after retries for data market %s on day %s: %v", dataMarketAddress, day, err)
 		return err
 	}
 

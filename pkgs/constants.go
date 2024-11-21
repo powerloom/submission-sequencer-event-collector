@@ -14,6 +14,7 @@ const (
 const (
 	CurrentDayKey              = "CurrentDayKey"
 	DaySizeTableKey            = "DaySizeTableKey"
+	DailySnapshotQuotaTableKey = "DailySnapshotQuotaTableKey"
 	CollectorKey               = "SnapshotCollector"
 	EpochMarkerSetKey          = "EpochMarkerSetKey"
 	EpochMarkerDetailsKey      = "EpochMarkerDetailsKey"
@@ -21,5 +22,6 @@ const (
 	SubmissionLimitTableKey    = "SubmissionLimitTable"
 	BatchSubmissionsKey        = "BatchSubmissionsKey"
 	SlotSubmissionsKey         = "SlotSubmissionsKey"
+	DaySubmissionsKey          = "DaySubmissionsKey"
 	EligibleSlotSubmissionsKey = "EligibleSlotSubmissionsKey"
 )
