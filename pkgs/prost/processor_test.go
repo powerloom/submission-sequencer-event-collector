@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math/big"
+	"strconv"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/redis"
@@ -42,6 +43,19 @@ func setup(t *testing.T) *miniredis.Miniredis {
 	})
 
 	return mockRedis
+}
+
+func getSlotSubmissionKeys(dataMarketAddress, currentDay string, count int) []string {
+	slotSubmissionKeys := make([]string, 0)
+
+	// Generate slot submission keys
+	for i := 1; i <= count; i++ {
+		slotID := strconv.Itoa(i)
+		key := redis.SlotSubmissionKey(dataMarketAddress, slotID, currentDay)
+		slotSubmissionKeys = append(slotSubmissionKeys, key)
+	}
+
+	return slotSubmissionKeys
 }
 
 // TestCheckAndTriggerBatchPreparation tests the checkAndTriggerBatchPreparation function
@@ -91,4 +105,30 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	// Compare the fields from epochDetails and details
 	require.Equal(t, epochDetails.EpochReleaseBlockNumber, details.EpochReleaseBlockNumber)
 	require.Equal(t, epochDetails.SubmissionLimitBlockNumber, details.SubmissionLimitBlockNumber)
+}
+
+func TestCalculateEligibleNodes(t *testing.T) {
+	setup(t)
+
+	// Define test inputs
+	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
+	day := "42"
+	setKey := redis.SlotSubmissionSetByDay(dataMarketAddress, day)
+
+	// Mock expected eligible nodes count
+	expectedEligibleNodesCount := 5
+
+	// Get the slot submission keys
+	slotSubmissionKeys := getSlotSubmissionKeys(dataMarketAddress, day, 5)
+
+	// Insert the keys into redis
+	err := redis.AddToSet(context.Background(), setKey, slotSubmissionKeys...)
+	assert.NoError(t, err)
+
+	// Call the function
+	eligibleNodes, err := calculateEligibleNodes(dataMarketAddress, day)
+	assert.NoError(t, err)
+
+	// Assert the eligible nodes count
+	assert.Equal(t, expectedEligibleNodesCount, eligibleNodes)
 }
