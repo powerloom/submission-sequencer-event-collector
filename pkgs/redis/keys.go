@@ -10,10 +10,6 @@ func GetDaySizeTableKey() string {
 	return pkgs.DaySizeTableKey
 }
 
-func GetDailySnapshotQuotaTableKey() string {
-	return pkgs.DailySnapshotQuotaTableKey
-}
-
 func GetSubmissionLimitTableKey() string {
 	return pkgs.SubmissionLimitTableKey
 }
@@ -38,10 +34,6 @@ func SlotSubmissionKey(dataMarketAddress string, slotID, currentDay string) stri
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.SlotSubmissionsKey, strings.ToLower(dataMarketAddress), currentDay, slotID)
 }
 
-func SlotSubmissionSetByDay(dataMarketAddress, currentDay string) string {
-	return fmt.Sprintf("%s.%s.%s", pkgs.DaySubmissionsKey, strings.ToLower(dataMarketAddress), currentDay)
-}
-
 func BlockHashByNumber(blockNum int64) string {
 	return fmt.Sprintf("%s.%d", pkgs.BlockHashByNumberKey, blockNum)
 }
@@ -52,4 +44,8 @@ func EligibleSlotSubmissionKey(dataMarketAddress string, slotID, currentDay stri
 
 func BatchSubmissionKey(dataMarketAddress, epochID, batchID string) string {
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.BatchSubmissionsKey, strings.ToLower(dataMarketAddress), epochID, batchID)
+}
+
+func EligibleNodesCountByDayKey(dataMarketAddress, currentDay string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.EligibleNodesCountKey, strings.ToLower(dataMarketAddress), currentDay)
 }
