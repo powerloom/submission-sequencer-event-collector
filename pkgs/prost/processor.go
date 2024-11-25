@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
@@ -387,8 +388,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		parts := strings.Split(submissionKey, ".")
 		slotID := parts[3]
 
-		slotSubmissionKey := redis.SlotSubmissionKey(dataMarketAddress, slotID, currentDay.String())
-		count, err := redis.Incr(context.Background(), slotSubmissionKey)
+		count, err := redis.Incr(context.Background(), redis.SlotSubmissionKey(dataMarketAddress, slotID, currentDay.String()))
 		if err != nil {
 			errorMsg := fmt.Sprintf("Failed to increment submission count for slotID %s, epoch %s in data market %s: %s", slotID, epochID, dataMarketAddress, err.Error())
 			clients.SendFailureNotification(pkgs.UpdateSlotSubmissionCount, errorMsg, time.Now().String(), "High")
@@ -397,21 +397,6 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		}
 
 		log.Infof("📈 Slot submission count updated successfully for slotID %s, epoch %s in data market %s: %d", slotID, epochID, dataMarketAddress, count)
-
-		// Fetch daily snapshot quota for the specified data market address from Redis
-		dailySnapshotQuota, err := redis.GetDailySnapshotQuota(ctx, dataMarketAddress)
-		if err != nil {
-			log.Errorf("Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
-			return err
-		}
-
-		// If the submission count exceeds the daily snapshot quota, add the slot submission key to the set
-		if count >= dailySnapshotQuota.Int64() {
-			if err := redis.AddToSet(ctx, redis.SlotSubmissionSetByDay(dataMarketAddress, currentDay.String()), slotSubmissionKey); err != nil {
-				clients.SendFailureNotification(pkgs.UpdateSlotSubmissionCount, err.Error(), time.Now().String(), "High")
-				log.Errorf("Failed to add slot submission key %s to set for data market %s, day %s: %v", slotSubmissionKey, dataMarketAddress, currentDay.String(), err)
-			}
-		}
 	}
 
 	return nil
@@ -429,14 +414,21 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 	if cachedDay != "" && cachedDay != currentDay.String() {
 		log.Infof("Day transition detected for data market %s: %s -> %s", dataMarketAddress, cachedDay, currentDay)
 
-		// Calculate eligible nodes (cached day means prev day)
-		eligibleNodes, err := calculateEligibleNodes(dataMarketAddress, cachedDay)
+		// Fetch the eligible nodes count for the cached day(prev day)
+		eligibleNodesStr, err := redis.Get(context.Background(), redis.EligibleNodesCountByDayKey(dataMarketAddress, cachedDay))
 		if err != nil {
-			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+			log.Errorf("Error fetching eligible nodes for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
 			return err
 		}
 
-		log.Infof("✅ Eligible nodes for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodes)
+		// Convert the fetched value from string to integer
+		eligibleNodes, err := strconv.Atoi(eligibleNodesStr)
+		if err != nil {
+			log.Errorf("Error converting eligible nodes count to integer for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+			return err
+		}
+
+		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodes)
 
 		// Send the update rewards request to the external tx relayer service
 		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodes); err != nil {
@@ -446,18 +438,6 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 	}
 
 	return nil
-}
-
-func calculateEligibleNodes(dataMarketAddress string, day string) (int, error) {
-	// Fetch the count of slot submission keys that crossed the DAILY_SNAPSHOT_QUOTA
-	setKey := redis.SlotSubmissionSetByDay(dataMarketAddress, day)
-	eligibleNodesCount, err := redis.GetSetCardinality(context.Background(), setKey)
-	if err != nil {
-		log.Errorf("Failed to fetch eligible nodes for data market %s on day %s: %v", dataMarketAddress, day, err)
-		return 0, err
-	}
-
-	return eligibleNodesCount, nil
 }
 
 func sendBatchSizeToRelayer(dataMarketAddress string, epochID *big.Int, batchSize int) error {
