@@ -435,7 +435,7 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 		// Fetch the eligible nodes count for the cached day(prev day)
 		eligibleNodesCount, err := calculateEligibleNodes(dataMarketAddress, cachedDay)
 		if err != nil {
-			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, currentDay.String(), err)
+			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
 			return err
 		}
 
