@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
@@ -233,6 +234,11 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	// Arrange the projectMap into batches of submission keys
 	batches := arrangeSubmissionKeysInBatches(projectMap)
 	log.Infof("🔄 Arranged %d batches of submission keys for epoch %s in data market %s", len(batches), epochID.String(), dataMarketAddress)
+
+	// Store the batch count for the specified data market address in Redis
+	if err := redis.Set(context.Background(), redis.GetBatchCountKey(dataMarketAddress, epochID.String()), strconv.Itoa(len(batches))); err != nil {
+		log.Errorf("Failed to set batch count for epoch %s, data market %s in Redis: %s", epochID.String(), dataMarketAddress, err.Error())
+	}
 
 	// Send the size of the batches to the external tx relayer service
 	if err = sendBatchSizeToRelayer(dataMarketAddress, epochID, len(batches)); err != nil {

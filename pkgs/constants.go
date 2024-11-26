@@ -16,6 +16,7 @@ const (
 const (
 	CurrentDayKey                  = "CurrentDayKey"
 	DaySizeTableKey                = "DaySizeTableKey"
+	BatchCountKey                  = "BatchCountKey"
 	CollectorKey                   = "SnapshotCollector"
 	EpochMarkerSetKey              = "EpochMarkerSetKey"
 	EpochMarkerDetailsKey          = "EpochMarkerDetailsKey"

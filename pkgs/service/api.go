@@ -46,6 +46,29 @@ type DailySubmissions struct {
 	Submissions int64 `json:"submissions"`
 }
 
+type EligibleNodesRequest struct {
+	Token             string `json:"token"`
+	EpochID           int    `json:"epoch_id"`
+	PastDays          int    `json:"past_days"`
+	DataMarketAddress string `json:"data_market_address"`
+}
+
+type BatchCountRequest struct {
+	Token             string `json:"token"`
+	EpochID           int    `json:"epoch_id"`
+	DataMarketAddress string `json:"data_market_address"`
+}
+
+type EligibleNodes struct {
+	Day     int      `json:"day"`
+	Count   int      `json:"eligible_nodes_count"`
+	SlotIDs []string `json:"slot_ids"`
+}
+
+type BatchCount struct {
+	TotalBatches int `json:"total_batches"`
+}
+
 type InfoType[K any] struct {
 	Success  bool `json:"success"`
 	Response K    `json:"response"`
@@ -100,6 +123,17 @@ func getDailyEligibleSubmissions(dataMarketAddress string, slotID int, day *big.
 
 	// Return 0 if no value is found in Redis
 	return 0
+}
+
+func getEligibleSlotIDs(dataMarketAddress string, day *big.Int) []string {
+	// Construct the key for fetching eligible slotIDs from Redis
+	key := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, day.String())
+
+	// Attempt to get the set values from Redis
+	eligibleSlotIDs := redis.GetSetKeys(context.Background(), key)
+
+	// Return the list of slotIDs
+	return eligibleSlotIDs
 }
 
 // handleTotalSubmissions godoc
@@ -294,6 +328,183 @@ func handleEligibleSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleEligibleNodesCount godoc
+// @Summary Get eligible nodes count
+// @Description Retrieves the total count of eligible nodes along with their corresponding slot IDs for a specified data market address and epochID across a specified number of past days
+// @Tags Eligible Nodes Count
+// @Accept json
+// @Produce json
+// @Param request body EligibleNodesRequest true "Eligible nodes count payload"
+// @Success 200 {object} Response[ResponseArray[EligibleNodes]]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, missing or invalid epochID, or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Router /eligibleNodesCount [post]
+func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
+	var request EligibleNodesRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	if request.PastDays < 1 {
+		http.Error(w, "Past days should be at least 1", http.StatusBadRequest)
+		return
+	}
+
+	epochID := request.EpochID
+	if epochID <= 0 {
+		http.Error(w, "EpochID is missing or invalid", http.StatusBadRequest)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	if err != nil {
+		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
+		return
+	}
+
+	currentDay := new(big.Int).Set(day)
+	eligibleNodesResponse := make([]EligibleNodes, request.PastDays)
+
+	var wg sync.WaitGroup
+	ch := make(chan EligibleNodes, request.PastDays)
+
+	for i := 0; i < request.PastDays; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
+			slotIDs := getEligibleSlotIDs(request.DataMarketAddress, day) // Fetch eligible slot IDs for the day
+			ch <- EligibleNodes{
+				Day:     int(day.Int64()),
+				Count:   len(slotIDs),
+				SlotIDs: slotIDs,
+			}
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	for eligibleNode := range ch {
+		eligibleNodesResponse[currentDay.Int64()-int64(eligibleNode.Day)] = eligibleNode
+	}
+
+	info := InfoType[ResponseArray[EligibleNodes]]{
+		Success:  true,
+		Response: eligibleNodesResponse,
+	}
+
+	response := Response[ResponseArray[EligibleNodes]]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleBatchCount godoc
+// @Summary Get total batch count
+// @Description Retrieves the total number of batches created within a specific epoch for a given data market address
+// @Tags Batch Count
+// @Accept json
+// @Produce json
+// @Param request body BatchCountRequest true "Batch count request payload"
+// @Success 200 {object} Response[BatchCount]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Router /batchCount [post]
+func handleBatchCount(w http.ResponseWriter, r *http.Request) {
+	var request BatchCountRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	epochID := request.EpochID
+	if epochID <= 0 {
+		http.Error(w, "EpochID is missing or invalid", http.StatusBadRequest)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the batch count from Redis
+	batchCountKey := redis.GetBatchCountKey(request.DataMarketAddress, strconv.Itoa(request.EpochID))
+	batchCountStr, err := redis.Get(context.Background(), batchCountKey)
+	if err != nil {
+		http.Error(w, "Internal Server Error: Failed to fetch batch count", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert batch count to integer
+	batchCount, err := strconv.Atoi(batchCountStr)
+	if err != nil {
+		http.Error(w, "Internal Server Error: Invalid batch count format", http.StatusInternalServerError)
+		return
+	}
+
+	info := InfoType[BatchCount]{
+		Success: true,
+		Response: BatchCount{
+			TotalBatches: batchCount,
+		},
+	}
+
+	response := Response[BatchCount]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func RequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.New().String()
@@ -314,6 +525,8 @@ func StartApiServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/totalSubmissions", handleTotalSubmissions)
 	mux.HandleFunc("/eligibleSubmissions", handleEligibleSubmissions)
+	mux.HandleFunc("/eligibleNodesCount", handleEligibleNodesCount)
+	mux.HandleFunc("/batchCount", handleBatchCount)
 
 	handler := RequestMiddleware(mux)
 
