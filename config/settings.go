@@ -26,6 +26,7 @@ type Settings struct {
 	BatchSize                   int
 	BlockTime                   int
 	HttpTimeout                 int
+	SuccessNotification         bool
 }
 
 func LoadConfig() {
@@ -40,6 +41,11 @@ func LoadConfig() {
 		log.Fatalf("DATA_MARKET_ADDRESSES environment variable has an empty array")
 	}
 
+	successNotification, successNotificationErr := strconv.ParseBool(getEnv("SUCCESS_NOTIFICATION", "true"))
+	if successNotificationErr != nil {
+		log.Fatalf("Failed to parse SUCCESS_NOTIFICATION environment variable: %v", successNotificationErr)
+	}
+
 	config := Settings{
 		ClientUrl:               getEnv("PROST_RPC_URL", ""),
 		ContractAddress:         getEnv("PROTOCOL_STATE_CONTRACT", ""),
@@ -51,6 +57,7 @@ func LoadConfig() {
 		TxRelayerUrl:            getEnv("TX_RELAYER_URL", ""),
 		TxRelayerAuthWriteToken: getEnv("TX_RELAYER_AUTH_WRITE_TOKEN", ""),
 		DataMarketAddresses:     dataMarketAddressesList,
+		SuccessNotification:     successNotification,
 	}
 	if config.AuthReadToken == "" {
 		log.Fatalf("AUTH_READ_TOKEN environment variable is not set")
