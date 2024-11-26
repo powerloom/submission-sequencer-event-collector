@@ -35,12 +35,12 @@ const docTemplate = `{
                 "summary": "Get total batch count",
                 "parameters": [
                     {
-                        "description": "Batch count request payload",
+                        "description": "Epoch data market request payload",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/service.BatchCountRequest"
+                            "$ref": "#/definitions/service.EpochDataMarketRequest"
                         }
                     }
                 ],
@@ -214,20 +214,6 @@ const docTemplate = `{
                 }
             }
         },
-        "service.BatchCountRequest": {
-            "type": "object",
-            "properties": {
-                "data_market_address": {
-                    "type": "string"
-                },
-                "epoch_id": {
-                    "type": "integer"
-                },
-                "token": {
-                    "type": "string"
-                }
-            }
-        },
         "service.DailySubmissions": {
             "type": "object",
             "properties": {
@@ -266,6 +252,20 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "past_days": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.EpochDataMarketRequest": {
+            "type": "object",
+            "properties": {
+                "data_market_address": {
+                    "type": "string"
+                },
+                "epoch_id": {
                     "type": "integer"
                 },
                 "token": {
