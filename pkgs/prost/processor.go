@@ -368,11 +368,8 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 			eligibleSlotSubmissionsByDayKeys := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay.String())
 			eligibleSlotIDs := redis.GetSetKeys(context.Background(), eligibleSlotSubmissionsByDayKeys)
 
-			// Format the eligible slotIDs into a readable string
-			slotIDs := fmt.Sprintf("%v", eligibleSlotIDs)
-
 			// Construct the message with eligible node count and slot IDs
-			alertMsg := fmt.Sprintf("🔔 Epoch %d: Eligible node count for data market %s on day %s: %d\nSlot IDs: %s", epochID, dataMarketAddress, currentDay.String(), len(slotIDs), slotIDs)
+			alertMsg := fmt.Sprintf("🔔 Epoch %d: Eligible node count for data market %s on day %s: %d\nSlot IDs: %v", epochID, dataMarketAddress, currentDay.String(), len(eligibleSlotIDs), eligibleSlotIDs)
 
 			// Send the alert
 			clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
