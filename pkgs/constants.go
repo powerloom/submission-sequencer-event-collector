@@ -24,6 +24,5 @@ const (
 	BatchSubmissionsKey            = "BatchSubmissionsKey"
 	SlotSubmissionsKey             = "SlotSubmissionsKey"
 	EligibleSlotSubmissionsKey     = "EligibleSlotSubmissionsKey"
-	EligibleNodesCountKey          = "EligibleNodesCountKey"
 	EligibleSlotSubmissionByDayKey = "EligibleSlotSubmissionByDayKey"
 )
