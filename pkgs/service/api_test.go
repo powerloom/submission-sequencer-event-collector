@@ -4,13 +4,16 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
 	"submission-sequencer-collector/config"
+	"submission-sequencer-collector/pkgs"
 	"submission-sequencer-collector/pkgs/prost"
 	"submission-sequencer-collector/pkgs/redis"
 	"submission-sequencer-collector/pkgs/utils"
@@ -447,4 +450,141 @@ func TestHandleBatchCount(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleEpochSubmissionDetails(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the epoch submission count
+	redis.Set(context.Background(), redis.EpochSubmissionsCount("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", 123), "10")
+
+	// Set the epoch submission details
+	epochSubmissionKey := redis.EpochSubmissionsKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", 123)
+	epochSubmissionsMap := getEpochSubmissionDetails(10)
+	epochSubmissionsList := refactorEpochSubmissions(epochSubmissionsMap)
+
+	for submissionID, submissionData := range epochSubmissionsMap {
+		// Marshal the SnapshotSubmission into JSON
+		submissionJSON, err := json.Marshal(submissionData)
+		if err != nil {
+			log.Fatalf("Failed to marshal SnapshotSubmission: %v", err)
+		}
+
+		// Add to Redis hash set
+		if err := redis.RedisClient.HSet(context.Background(), epochSubmissionKey, submissionID, submissionJSON).Err(); err != nil {
+			log.Fatalf("Failed to write submission details to Redis: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		response   EpochSubmissionSummary
+	}{
+		{
+			name:       "Valid token, epoch submission details fetched",
+			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusOK,
+			response: EpochSubmissionSummary{
+				SubmissionCount: 10,
+				Submissions:     epochSubmissionsList,
+			},
+		},
+		{
+			name:       "Invalid token",
+			body:       `{"epoch_id": 123, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusUnauthorized,
+			response:   EpochSubmissionSummary{},
+		},
+		{
+			name:       "Invalid EpochID",
+			body:       `{"epoch_id": -1, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   EpochSubmissionSummary{},
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			statusCode: http.StatusBadRequest,
+			response:   EpochSubmissionSummary{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/epochSubmissionDetails", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleEpochSubmissionDetails)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool                   `json:"success"`
+						Response EpochSubmissionSummary `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"request_id"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+
+				err = json.Unmarshal([]byte(responseBody), &response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.response, response.Info.Response)
+			}
+		})
+	}
+}
+
+func getEpochSubmissionDetails(count int) map[string]*pkgs.SnapshotSubmission {
+	epochSubmissions := make(map[string]*pkgs.SnapshotSubmission)
+
+	for i := 1; i <= count; i++ {
+		// Generate submissionID
+		submissionID := fmt.Sprintf("submission-%d", i)
+
+		// Create a sample SnapshotSubmission
+		submission := &pkgs.SnapshotSubmission{
+			Request: &pkgs.Request{
+				EpochId: 123,
+				SlotId:  uint64(i),
+			},
+		}
+
+		// Add to the map
+		epochSubmissions[submissionID] = submission
+	}
+
+	return epochSubmissions
+}
+
+func refactorEpochSubmissions(eligibleSubmissions map[string]*pkgs.SnapshotSubmission) []SubmissionDetails {
+	epochSubmissionsList := make([]SubmissionDetails, 0)
+
+	for submissionID, submission := range eligibleSubmissions {
+		epochSubmissionsList = append(epochSubmissionsList, SubmissionDetails{
+			SubmissionID:   submissionID,
+			SubmissionData: submission,
+		})
+	}
+
+	sort.Slice(epochSubmissionsList, func(i, j int) bool {
+		return epochSubmissionsList[i].SubmissionID < epochSubmissionsList[j].SubmissionID
+	})
+
+	return epochSubmissionsList
 }
