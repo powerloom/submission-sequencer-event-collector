@@ -361,8 +361,27 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		return err
 	}
 
+	// Send eligible nodes count and slotIDs alert every 5 epochs
+	if config.SettingsObj.SuccessNotification {
+		if epochID.Uint64()%5 == 0 {
+			// Fetch the slotIDs whose eligible submissions are recorded for the current day
+			eligibleSlotSubmissionsByDayKeys := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay.String())
+			eligibleSlotIDs := redis.GetSetKeys(context.Background(), eligibleSlotSubmissionsByDayKeys)
+
+			// Format the eligible slotIDs into a readable string
+			slotIDs := fmt.Sprintf("%v", eligibleSlotIDs)
+
+			// Construct the message with eligible node count and slot IDs
+			alertMsg := fmt.Sprintf("🔔 Epoch %d: Eligible node count for data market %s on day %s: %d\nSlot IDs: %s", epochID, dataMarketAddress, currentDay.String(), len(slotIDs), slotIDs)
+
+			// Send the alert
+			clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
+			log.Infof(alertMsg)
+		}
+	}
+
 	// Handle day transitions and trigger updateRewards
-	if err := handleDayTransition(dataMarketAddress, currentDay, epochID.Uint64()); err != nil {
+	if err := handleDayTransition(dataMarketAddress, currentDay); err != nil {
 		log.Errorf("Error handling day transition for data market %s: %v", dataMarketAddress, err)
 		return err
 	}
@@ -401,7 +420,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 	return nil
 }
 
-func handleDayTransition(dataMarketAddress string, currentDay *big.Int, epochID uint64) error {
+func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 	// Fetch the cached day value
 	cachedDay, err := redis.Get(context.Background(), redis.GetCurrentDayKey(dataMarketAddress))
 	if err != nil {
@@ -421,25 +440,6 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int, epochID 
 		}
 
 		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodesCount)
-
-		// Send eligible nodes count and slotIDs alert every 5 epochs
-		if config.SettingsObj.SuccessNotification {
-			if epochID%5 == 0 {
-				// Fetch the slotIDs whose eligible submissions are recorded for the current day
-				eligibleSlotSubmissionsByDayKeys := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, cachedDay)
-				eligibleSlotIDs := redis.GetSetKeys(context.Background(), eligibleSlotSubmissionsByDayKeys)
-
-				// Format the eligible slotIDs into a readable string
-				slotIDs := fmt.Sprintf("%v", eligibleSlotIDs)
-
-				// Construct the message with eligible node count and slot IDs
-				alertMsg := fmt.Sprintf("🔔 Epoch %d: Eligible node count for data market %s on day %s: %d\nSlot IDs: %s", epochID, dataMarketAddress, currentDay.String(), eligibleNodesCount, slotIDs)
-
-				// Send the alert
-				clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
-				log.Infof(alertMsg)
-			}
-		}
 
 		// Send the update rewards request to the external tx relayer service
 		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodesCount); err != nil {
