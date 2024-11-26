@@ -264,3 +264,187 @@ func TestHandleEligibleSubmissions(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleEligibleNodeCount(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the current day
+	redis.Set(context.Background(), redis.GetCurrentDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "3")
+
+	// Set eligible slotIDs for each day
+	slotIDsForDay3 := []string{"slot1", "slot2", "slot3"}
+	redis.AddToSet(context.Background(), redis.EligibleSlotSubmissionsByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "3"), slotIDsForDay3...)
+
+	slotIDsForDay2 := []string{"slot4", "slot5", "slot6"}
+	redis.AddToSet(context.Background(), redis.EligibleSlotSubmissionsByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "2"), slotIDsForDay2...)
+
+	slotIDsForDay1 := []string{"slot7", "slot8", "slot9"}
+	redis.AddToSet(context.Background(), redis.EligibleSlotSubmissionsByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1"), slotIDsForDay1...)
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		response   []EligibleNodes
+	}{
+		{
+			name:       "Valid token, past days 1",
+			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusOK,
+			response: []EligibleNodes{
+				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
+			},
+		},
+		{
+			name:       "Valid token, past days 3",
+			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusOK,
+			response: []EligibleNodes{
+				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
+				{Day: 2, Count: 3, SlotIDs: slotIDsForDay2},
+				{Day: 1, Count: 3, SlotIDs: slotIDsForDay1},
+			},
+		},
+		{
+			name:       "Valid token, negative past days",
+			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": -1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   nil,
+		},
+		{
+			name:       "Invalid token",
+			body:       `{"epoch_id": 100, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusUnauthorized,
+			response:   nil,
+		},
+		{
+			name:       "Invalid EpochID",
+			body:       `{"epoch_id": -1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   nil,
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			statusCode: http.StatusBadRequest,
+			response:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/eligibleNodesCount", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleEligibleNodesCount)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool            `json:"success"`
+						Response []EligibleNodes `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"request_id"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+
+				err = json.Unmarshal([]byte(responseBody), &response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.response, response.Info.Response)
+			}
+		})
+	}
+}
+
+func TestHandleBatchCount(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the batch count
+	redis.Set(context.Background(), redis.GetBatchCountKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "123"), "10")
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		response   BatchCount
+	}{
+		{
+			name:       "Valid token, batch count fetched",
+			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusOK,
+			response: BatchCount{
+				TotalBatches: 10,
+			},
+		},
+		{
+			name:       "Invalid token",
+			body:       `{"epoch_id": 123, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusUnauthorized,
+			response:   BatchCount{},
+		},
+		{
+			name:       "Invalid EpochID",
+			body:       `{"epoch_id": -1, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   BatchCount{},
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			statusCode: http.StatusBadRequest,
+			response:   BatchCount{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/batchCount", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleBatchCount)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool       `json:"success"`
+						Response BatchCount `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"request_id"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+
+				err = json.Unmarshal([]byte(responseBody), &response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.response, response.Info.Response)
+			}
+		})
+	}
+}
