@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
@@ -415,20 +414,13 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int, epochID 
 		log.Infof("Day transition detected for data market %s: %s -> %s", dataMarketAddress, cachedDay, currentDay)
 
 		// Fetch the eligible nodes count for the cached day(prev day)
-		eligibleNodesStr, err := redis.Get(context.Background(), redis.EligibleNodesCountByDayKey(dataMarketAddress, cachedDay))
+		eligibleNodesCount, err := calculateEligibleNodes(dataMarketAddress, cachedDay)
 		if err != nil {
-			log.Errorf("Error fetching eligible nodes for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, currentDay.String(), err)
 			return err
 		}
 
-		// Convert the fetched value from string to integer
-		eligibleNodes, err := strconv.Atoi(eligibleNodesStr)
-		if err != nil {
-			log.Errorf("Error converting eligible nodes count to integer for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
-			return err
-		}
-
-		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodes)
+		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodesCount)
 
 		// Send eligible nodes count and slotIDs alert every 5 epochs
 		if config.SettingsObj.SuccessNotification {
@@ -441,7 +433,7 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int, epochID 
 				slotIDs := fmt.Sprintf("%v", eligibleSlotIDs)
 
 				// Construct the message with eligible node count and slot IDs
-				alertMsg := fmt.Sprintf("🔔 Epoch %d: Eligible node count for data market %s on day %s: %d\nSlot IDs: %s", epochID, dataMarketAddress, currentDay.String(), eligibleNodes, slotIDs)
+				alertMsg := fmt.Sprintf("🔔 Epoch %d: Eligible node count for data market %s on day %s: %d\nSlot IDs: %s", epochID, dataMarketAddress, currentDay.String(), eligibleNodesCount, slotIDs)
 
 				// Send the alert
 				clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
@@ -450,7 +442,7 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int, epochID 
 		}
 
 		// Send the update rewards request to the external tx relayer service
-		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodes); err != nil {
+		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodesCount); err != nil {
 			errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
 			clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 			log.Errorf(errorMsg)
@@ -459,6 +451,21 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int, epochID 
 	}
 
 	return nil
+}
+
+// calculateEligibleNodes calculates the number of eligible nodes for a given data market and day
+func calculateEligibleNodes(dataMarketAddress, day string) (int, error) {
+	// Build the Redis key to fetch eligible slot submissions for the specified day
+	eligibleSubmissionsSetKey := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, day)
+
+	// Retrieve the cardinality (count) of the set associated with the Redis key
+	eligibleNodesCount, err := redis.GetSetCardinality(context.Background(), eligibleSubmissionsSetKey)
+	if err != nil {
+		log.Errorf("Error fetching eligible nodes for data market %s on day %s: %v", dataMarketAddress, day, err)
+		return 0, fmt.Errorf("failed to fetch eligible nodes for data market %s on day %s: %w", dataMarketAddress, day, err)
+	}
+
+	return eligibleNodesCount, nil
 }
 
 func sendBatchSizeToRelayer(dataMarketAddress string, epochID *big.Int, batchSize int) error {

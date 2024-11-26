@@ -46,10 +46,6 @@ func BatchSubmissionKey(dataMarketAddress, epochID, batchID string) string {
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.BatchSubmissionsKey, strings.ToLower(dataMarketAddress), epochID, batchID)
 }
 
-func EligibleNodesCountByDayKey(dataMarketAddress, currentDay string) string {
-	return fmt.Sprintf("%s.%s.%s", pkgs.EligibleNodesCountKey, strings.ToLower(dataMarketAddress), currentDay)
-}
-
 func EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay string) string {
 	return fmt.Sprintf("%s.%s.%s", pkgs.EligibleSlotSubmissionByDayKey, strings.ToLower(dataMarketAddress), currentDay)
 }
