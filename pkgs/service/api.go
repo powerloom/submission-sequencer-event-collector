@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"sort"
 	"strconv"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/prost"
@@ -16,8 +17,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	_ "submission-sequencer-collector/pkgs/service/docs"
+
+	"submission-sequencer-collector/pkgs"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -53,7 +57,7 @@ type EligibleNodesRequest struct {
 	DataMarketAddress string `json:"data_market_address"`
 }
 
-type BatchCountRequest struct {
+type EpochDataMarketRequest struct {
 	Token             string `json:"token"`
 	EpochID           int    `json:"epoch_id"`
 	DataMarketAddress string `json:"data_market_address"`
@@ -67,6 +71,16 @@ type EligibleNodes struct {
 
 type BatchCount struct {
 	TotalBatches int `json:"total_batches"`
+}
+
+type SubmissionDetails struct {
+	SubmissionID   string                   `json:"submission_id"`
+	SubmissionData *pkgs.SnapshotSubmission `json:"submission_data"`
+}
+
+type EpochSubmissionSummary struct {
+	SubmissionCount int                 `json:"epoch_submission_count"`
+	Submissions     []SubmissionDetails `json:"submissions"`
 }
 
 type InfoType[K any] struct {
@@ -134,6 +148,16 @@ func getEligibleSlotIDs(dataMarketAddress string, day *big.Int) []string {
 
 	// Return the list of slotIDs
 	return eligibleSlotIDs
+}
+
+func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
+	// Use HGetAll to retrieve all key-value pairs in the hash
+	submissions, err := redis.RedisClient.HGetAll(context.Background(), epochSubmissionKey).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch epoch submission details from Redis: %v", err)
+	}
+
+	return submissions, nil
 }
 
 // handleTotalSubmissions godoc
@@ -434,13 +458,13 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 // @Tags Batch Count
 // @Accept json
 // @Produce json
-// @Param request body BatchCountRequest true "Batch count request payload"
+// @Param request body EpochDataMarketRequest true "Epoch data market request payload"
 // @Success 200 {object} Response[BatchCount]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Router /batchCount [post]
 func handleBatchCount(w http.ResponseWriter, r *http.Request) {
-	var request BatchCountRequest
+	var request EpochDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -505,6 +529,105 @@ func handleBatchCount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleEpochSubmissionDetails(w http.ResponseWriter, r *http.Request) {
+	var request EpochDataMarketRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	epochID := request.EpochID
+	if epochID <= 0 {
+		http.Error(w, "EpochID is missing or invalid", http.StatusBadRequest)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the epoch submission count from Redis
+	submissionCountKey := redis.EpochSubmissionsCount(request.DataMarketAddress, uint64(request.EpochID))
+	submissionCountStr, err := redis.Get(context.Background(), submissionCountKey)
+	if err != nil {
+		http.Error(w, "Internal Server Error: Failed to fetch epoch submission count", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert submission count to integer
+	submissionCount, err := strconv.Atoi(submissionCountStr)
+	if err != nil {
+		http.Error(w, "Internal Server Error: Invalid epoch submission format", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch the epoch submission details from Redis
+	epochSubmissionsKey := redis.EpochSubmissionsKey(request.DataMarketAddress, uint64(request.EpochID))
+	epochSubmissionDetails, err := getEpochSubmissions(epochSubmissionsKey)
+	if err != nil {
+		http.Error(w, "Internal Server Error: Failed to fetch epoch submission details", http.StatusInternalServerError)
+		return
+	}
+
+	submissionDetailsList := make([]SubmissionDetails, 0)
+	for submissionID, submissionJSON := range epochSubmissionDetails {
+		// Unmarshal the JSON into the SnapshotSubmission struct
+		submissionData := pkgs.SnapshotSubmission{}
+		err = protojson.Unmarshal([]byte(submissionJSON), &submissionData)
+		if err != nil {
+			log.Errorf("Failed to unmarshal submission details for ID %s: %v", submissionID, err)
+			continue // Skip this submission and move to the next
+		}
+
+		// Create a SubmissionDetails object
+		details := SubmissionDetails{
+			SubmissionID:   submissionID,
+			SubmissionData: &submissionData,
+		}
+
+		// Append the details to the list
+		submissionDetailsList = append(submissionDetailsList, details)
+	}
+
+	sort.Slice(submissionDetailsList, func(i, j int) bool {
+		return submissionDetailsList[i].SubmissionID < submissionDetailsList[j].SubmissionID
+	})
+
+	info := InfoType[EpochSubmissionSummary]{
+		Success: true,
+		Response: EpochSubmissionSummary{
+			SubmissionCount: submissionCount,
+			Submissions:     submissionDetailsList,
+		},
+	}
+
+	response := Response[EpochSubmissionSummary]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func RequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.New().String()
@@ -527,6 +650,7 @@ func StartApiServer() {
 	mux.HandleFunc("/eligibleSubmissions", handleEligibleSubmissions)
 	mux.HandleFunc("/eligibleNodesCount", handleEligibleNodesCount)
 	mux.HandleFunc("/batchCount", handleBatchCount)
+	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
 
 	handler := RequestMiddleware(mux)
 
