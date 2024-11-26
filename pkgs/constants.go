@@ -25,4 +25,5 @@ const (
 	SlotSubmissionsKey             = "SlotSubmissionsKey"
 	EligibleSlotSubmissionsKey     = "EligibleSlotSubmissionsKey"
 	EligibleSlotSubmissionByDayKey = "EligibleSlotSubmissionByDayKey"
+	LastKnownDayKey                = "LastKnownDayKey"
 )

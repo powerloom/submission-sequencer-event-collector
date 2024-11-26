@@ -398,6 +398,11 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		return fmt.Errorf("failed to cache day value for data market %s in Redis: %v", dataMarketAddress, err)
 	}
 
+	// Set the last known day in Redis (for detecting day transition)
+	if err := redis.Set(context.Background(), redis.LastKnownDay(dataMarketAddress), currentDay.String()); err != nil {
+		return fmt.Errorf("failed to cache last known day value for data market %s in Redis: %v", dataMarketAddress, err)
+	}
+
 	// Increment the slot submissions count for a data market in Redis
 	for _, submissionKey := range submissionKeys {
 		parts := strings.Split(submissionKey, ".")
@@ -418,29 +423,29 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 }
 
 func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
-	// Fetch the cached day value
-	cachedDay, err := redis.Get(context.Background(), redis.GetCurrentDayKey(dataMarketAddress))
+	// Fetch the last known day value from Redis
+	lastKnownDay, err := redis.Get(context.Background(), redis.LastKnownDay(dataMarketAddress))
 	if err != nil {
-		log.Errorf("Error fetching cached day value for data market %s from Redis: %v", dataMarketAddress, err)
+		log.Errorf("Error fetching last known day value for data market %s from Redis: %v", dataMarketAddress, err)
 		return err
 	}
 
 	// Check for day transition
-	if cachedDay != "" && cachedDay != currentDay.String() {
-		log.Infof("Day transition detected for data market %s: %s -> %s", dataMarketAddress, cachedDay, currentDay)
+	if lastKnownDay != "" && lastKnownDay != currentDay.String() {
+		log.Infof("Day transition detected for data market %s: %s -> %s", dataMarketAddress, lastKnownDay, currentDay.String())
 
-		// Fetch the eligible nodes count for the cached day(prev day)
-		eligibleNodesCount, err := calculateEligibleNodes(dataMarketAddress, cachedDay)
+		// Fetch the eligible nodes count for the last known day (prev day)
+		eligibleNodesCount, err := calculateEligibleNodes(dataMarketAddress, lastKnownDay)
 		if err != nil {
-			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+			log.Errorf("Error calculating eligible nodes for data market %s on day %s: %v", dataMarketAddress, lastKnownDay, err)
 			return err
 		}
 
-		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, cachedDay, eligibleNodesCount)
+		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
 
 		// Send the update rewards request to the external tx relayer service
-		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodesCount); err != nil {
-			errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
+		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, lastKnownDay, eligibleNodesCount); err != nil {
+			errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s: %v", dataMarketAddress, lastKnownDay, err)
 			clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 			log.Errorf(errorMsg)
 			return err

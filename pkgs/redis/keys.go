@@ -18,6 +18,10 @@ func GetCurrentDayKey(dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%s", pkgs.CurrentDayKey, strings.ToLower(dataMarketAddress))
 }
 
+func LastKnownDay(dataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s", pkgs.LastKnownDayKey, strings.ToLower(dataMarketAddress))
+}
+
 func EpochMarkerSet(dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strings.ToLower(dataMarketAddress))
 }
