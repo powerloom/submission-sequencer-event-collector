@@ -396,7 +396,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 				}
 
 				// If count is non-zero, break the retry loop
-				if count.Uint64() > 0 {
+				if count != nil && count.Uint64() > 0 {
 					msg := fmt.Sprintf("✅ Contract Query successful: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), count.Uint64())
 					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, msg, time.Now().String(), "High")
 					log.Infof(msg)
@@ -431,11 +431,12 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					// Fallback to recalculation if cached value is not found
 					eligibleNodes := 0
 
-					var totalNodeCount *big.Int
+					// Fetch the total node count from the contract
+					var nodeCount *big.Int
 					if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
-						return Instance.GetTotalNodeCount(&bind.CallOpts{})
+						return Instance.GetTotalNodeCount(&bind.CallOpts{Context: context.Background()})
 					}); err == nil {
-						totalNodeCount = output
+						nodeCount = output
 					}
 
 					// Fetch daily snapshot quota for the specified data market address from Redis
@@ -445,7 +446,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 						return err
 					}
 
-					for slotID := 1; slotID <= int(totalNodeCount.Uint64()); slotID++ {
+					for slotID := int64(1); slotID <= nodeCount.Int64(); slotID++ {
 						var slotSubmissionCount *big.Int
 						if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
 							return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), dayToCheck)
