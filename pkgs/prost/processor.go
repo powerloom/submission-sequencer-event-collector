@@ -15,6 +15,7 @@ import (
 
 	"github.com/cenkalti/backoff"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
@@ -362,8 +363,8 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 	}
 
 	// Send eligible nodes count and slotIDs alert every 5 epochs
-	if config.SettingsObj.PeriodicEligibleCountAlerts {
-		if epochID.Uint64()%5 == 0 {
+	if epochID.Uint64()%5 == 0 {
+		if config.SettingsObj.PeriodicEligibleCountAlerts {
 			// Fetch the slotIDs whose eligible submissions are recorded for the current day
 			eligibleSlotSubmissionsByDayKeys := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay.String())
 			eligibleSlotIDs := redis.GetSetKeys(context.Background(), eligibleSlotSubmissionsByDayKeys)
@@ -374,6 +375,107 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 			// Send the alert
 			clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
 			log.Infof(alertMsg)
+		}
+
+		for day := 1; day <= config.SettingsObj.PastDaysBuffer; day++ {
+			// Calculate the day to check
+			dayToCheck := new(big.Int).Sub(currentDay, big.NewInt(int64(day)))
+
+			// Initialize retry attempts
+			retryCount := 0
+			for retryCount < config.SettingsObj.RetryLimits {
+				// Fetch the contract instance for the data market address
+				instance := DataMarketInstances[dataMarketAddress]
+
+				// Fetch eligible node count from data market contract
+				var count *big.Int
+				if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+					return instance.EligibleNodesForDay(&bind.CallOpts{}, dayToCheck)
+				}); err == nil {
+					count = output
+				}
+
+				// If count is non-zero, break the retry loop
+				if count.Uint64() > 0 {
+					msg := fmt.Sprintf("✅ Contract Query successful: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), count.Uint64())
+					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, msg, time.Now().String(), "High")
+					log.Infof(msg)
+					break
+				}
+
+				cachedCount, err := redis.GetSetCardinality(context.Background(), redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, dayToCheck.String()))
+				if err != nil {
+					errorMsg := fmt.Sprintf("❌ Error fetching cached eligible node count for data market %s on day %s: %v", dataMarketAddress, dayToCheck.String(), err)
+					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, errorMsg, time.Now().String(), "Medium")
+					log.Errorf(errorMsg)
+					return err
+				}
+
+				if cachedCount > 0 {
+					log.Infof("Cached eligible node count found for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), cachedCount)
+
+					// Attempt to update using cached value
+					if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, dayToCheck.String(), cachedCount); err != nil {
+						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using cached count: %v", dataMarketAddress, dayToCheck.String(), err)
+						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
+						log.Errorf(errorMsg)
+						return err
+					}
+
+					successMsg := fmt.Sprintf("✅ Successfully updated rewards using cached count: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), cachedCount)
+					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, successMsg, time.Now().String(), "High")
+					log.Infof(successMsg)
+
+					break
+				} else {
+					// Fallback to recalculation if cached value is not found
+					eligibleNodes := 0
+
+					var totalNodeCount *big.Int
+					if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+						return Instance.GetTotalNodeCount(&bind.CallOpts{})
+					}); err == nil {
+						totalNodeCount = output
+					}
+
+					// Fetch daily snapshot quota for the specified data market address from Redis
+					dailySnapshotQuota, err := redis.GetDailySnapshotQuota(context.Background(), dataMarketAddress)
+					if err != nil {
+						log.Errorf("❌ Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
+						return err
+					}
+
+					for slotID := 1; slotID <= int(totalNodeCount.Uint64()); slotID++ {
+						var slotSubmissionCount *big.Int
+						if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+							return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), dayToCheck)
+						}); err == nil {
+							slotSubmissionCount = output
+						}
+
+						if slotSubmissionCount != nil && slotSubmissionCount.Uint64() >= dailySnapshotQuota.Uint64() {
+							eligibleNodes++
+						}
+					}
+
+					log.Infof("Recalculated eligible nodes count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
+
+					// Attempt to update using recalculated value
+					if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, dayToCheck.String(), eligibleNodes); err != nil {
+						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using recalculated count: %v", dataMarketAddress, dayToCheck.String(), err)
+						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
+						log.Errorf(errorMsg)
+						retryCount++
+						continue
+					}
+
+					successMsg := fmt.Sprintf("✅ Successfully updated rewards using recalculated count: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
+					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, successMsg, time.Now().String(), "High")
+					log.Infof(successMsg)
+
+					break
+				}
+			}
 		}
 	}
 
@@ -450,6 +552,11 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 			log.Errorf(errorMsg)
 			return err
 		}
+
+		// Send alert message about eligible nodes count update
+		alertMsg := fmt.Sprintf("🔔 Day Transition Update: Eligible nodes count for data market %s has been updated for day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
+		clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
+		log.Infof(alertMsg)
 	}
 
 	return nil

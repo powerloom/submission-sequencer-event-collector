@@ -27,6 +27,8 @@ type Settings struct {
 	BlockTime                   int
 	HttpTimeout                 int
 	PeriodicEligibleCountAlerts bool
+	PastDaysBuffer              int
+	RetryLimits                 int
 }
 
 func LoadConfig() {
@@ -59,9 +61,11 @@ func LoadConfig() {
 		DataMarketAddresses:         dataMarketAddressesList,
 		PeriodicEligibleCountAlerts: periodicEligibleCountAlerts,
 	}
+
 	if config.AuthReadToken == "" {
 		log.Fatalf("AUTH_READ_TOKEN environment variable is not set")
 	}
+
 	for _, addr := range config.DataMarketAddresses {
 		config.DataMarketContractAddresses = append(config.DataMarketContractAddresses, common.HexToAddress(addr))
 	}
@@ -83,6 +87,18 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse HTTP_TIMEOUT environment variable: %v", timeoutParseErr)
 	}
 	config.HttpTimeout = httpTimeout
+
+	pastDaysBuffer, pastDaysBufferParseErr := strconv.Atoi(getEnv("PAST_DAYS_BUFFER", "5"))
+	if pastDaysBufferParseErr != nil {
+		log.Fatalf("Failed to parse PAST_DAYS_BUFFER environment variable: %v", pastDaysBufferParseErr)
+	}
+	config.PastDaysBuffer = pastDaysBuffer
+
+	retryLimits, retryLimitsParseErr := strconv.Atoi(getEnv("RETRY_LIMITS", "3"))
+	if retryLimitsParseErr != nil {
+		log.Fatalf("Failed to parse RETRY_LIMITS environment variable: %v", retryLimitsParseErr)
+	}
+	config.RetryLimits = retryLimits
 
 	SettingsObj = &config
 }

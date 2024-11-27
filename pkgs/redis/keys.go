@@ -10,6 +10,10 @@ func GetDaySizeTableKey() string {
 	return pkgs.DaySizeTableKey
 }
 
+func GetDailySnapshotQuotaTableKey() string {
+	return pkgs.DailySnapshotQuotaTableKey
+}
+
 func GetSubmissionLimitTableKey() string {
 	return pkgs.SubmissionLimitTableKey
 }
