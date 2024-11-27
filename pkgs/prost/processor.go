@@ -362,7 +362,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 	}
 
 	// Send eligible nodes count and slotIDs alert every 5 epochs
-	if config.SettingsObj.SuccessNotification {
+	if config.SettingsObj.PeriodicEligibleCountAlerts {
 		if epochID.Uint64()%5 == 0 {
 			// Fetch the slotIDs whose eligible submissions are recorded for the current day
 			eligibleSlotSubmissionsByDayKeys := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay.String())
