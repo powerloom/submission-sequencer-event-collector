@@ -415,7 +415,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					log.Infof("Cached eligible node count found for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), cachedCount)
 
 					// Attempt to update using cached value
-					if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, dayToCheck.String(), cachedCount); err != nil {
+					if err = sendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), cachedCount); err != nil {
 						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using cached count: %v", dataMarketAddress, dayToCheck.String(), err)
 						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 						log.Errorf(errorMsg)
@@ -462,7 +462,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					log.Infof("Recalculated eligible nodes count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
 
 					// Attempt to update using recalculated value
-					if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, dayToCheck.String(), eligibleNodes); err != nil {
+					if err = sendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), eligibleNodes); err != nil {
 						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using recalculated count: %v", dataMarketAddress, dayToCheck.String(), err)
 						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 						log.Errorf(errorMsg)
@@ -547,7 +547,7 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 		log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
 
 		// Send the update rewards request to the external tx relayer service
-		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, lastKnownDay, eligibleNodesCount); err != nil {
+		if err = sendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, lastKnownDay, eligibleNodesCount); err != nil {
 			errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s: %v", dataMarketAddress, lastKnownDay, err)
 			clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 			log.Errorf(errorMsg)
