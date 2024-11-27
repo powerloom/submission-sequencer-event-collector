@@ -3,13 +3,13 @@ package pkgs
 // Process Name Constants
 // process : identifier
 const (
-	StartFetchingBlocks        = "StartFetchingBlocks"
-	ProcessEvents              = "ProcessEvents"
-	ConstructProjectMap        = "ConstructProjectMap"
-	SendSubmissionBatchSize    = "SendSubmissionBatchSize"
-	UpdateSlotSubmissionCount  = "UpdateSlotSubmissionCount"
-	SendEligibleNodesCount     = "SendEligibleNodesCount"
-	SendUpdateRewardsToRelayer = "SendUpdateRewardsToRelayer"
+	StartFetchingBlocks        = "SequencerEventCollector: StartFetchingBlocks"
+	ProcessEvents              = "SequencerEventCollector: ProcessEvents"
+	ConstructProjectMap        = "SequencerEventCollector: ConstructProjectMap"
+	SendSubmissionBatchSize    = "SequencerEventCollector: SendSubmissionBatchSize"
+	UpdateSlotSubmissionCount  = "SequencerEventCollector: UpdateSlotSubmissionCount"
+	SendEligibleNodesCount     = "SequencerEventCollector: SendEligibleNodesCount"
+	SendUpdateRewardsToRelayer = "SequencerEventCollector: SendUpdateRewardsToRelayer"
 )
 
 // General Key Constants
