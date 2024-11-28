@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"submission-sequencer-collector/config"
@@ -377,7 +378,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 			log.Infof(alertMsg)
 		}
 
-		for day := 1; day <= config.SettingsObj.PastDaysBuffer; day++ {
+		for day := 1; day <= int(math.Min(float64(config.SettingsObj.PastDaysBuffer), float64(currentDay.Int64()))); day++ {
 			// Calculate the day to check
 			dayToCheck := new(big.Int).Sub(currentDay, big.NewInt(int64(day)))
 
@@ -397,9 +398,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 
 				// If count is non-zero, break the retry loop
 				if count != nil && count.Uint64() > 0 {
-					msg := fmt.Sprintf("✅ Contract Query successful: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), count.Uint64())
-					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, msg, time.Now().String(), "High")
-					log.Infof(msg)
+					log.Infof("✅ Contract Query successful: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), count.Uint64())
 					break
 				}
 
