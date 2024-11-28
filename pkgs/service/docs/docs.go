@@ -68,7 +68,7 @@ const docTemplate = `{
         },
         "/eligibleNodesCount": {
             "post": {
-                "description": "Retrieves the total count of eligible nodes along with their corresponding slot IDs for a specified data market address and epochID across a specified number of past days",
+                "description": "Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address and epochID across a specified number of past days",
                 "consumes": [
                     "application/json"
                 ],
@@ -99,6 +99,52 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1, missing or invalid epochID, or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/eligibleSlotSubmissionCount": {
+            "post": {
+                "description": "Retrieves the submission counts of all eligible slotIDs within a specific epoch for a given data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Eligible Submission Count"
+                ],
+                "summary": "Get the submission counts of all eligible slotIDs",
+                "parameters": [
+                    {
+                        "description": "Epoch data market day request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.EpochDataMarketDayRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_EligibleSubmissionCountsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, invalid day or invalid data market address)",
                         "schema": {
                             "type": "string"
                         }
@@ -259,6 +305,45 @@ const docTemplate = `{
                 }
             }
         },
+        "service.EligibleSubmissionCounts": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "slot_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.EligibleSubmissionCountsResponse": {
+            "type": "object",
+            "properties": {
+                "eligible_submission_counts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.EligibleSubmissionCounts"
+                    }
+                }
+            }
+        },
+        "service.EpochDataMarketDayRequest": {
+            "type": "object",
+            "properties": {
+                "data_market_address": {
+                    "type": "string"
+                },
+                "day": {
+                    "type": "integer"
+                },
+                "epoch_id": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "service.EpochDataMarketRequest": {
             "type": "object",
             "properties": {
@@ -278,6 +363,17 @@ const docTemplate = `{
             "properties": {
                 "response": {
                     "$ref": "#/definitions/service.BatchCount"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "service.InfoType-service_EligibleSubmissionCountsResponse": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "$ref": "#/definitions/service.EligibleSubmissionCountsResponse"
                 },
                 "success": {
                     "type": "boolean"
@@ -317,6 +413,17 @@ const docTemplate = `{
             "properties": {
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_BatchCount"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.Response-service_EligibleSubmissionCountsResponse": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_EligibleSubmissionCountsResponse"
                 },
                 "request_id": {
                     "type": "string"
