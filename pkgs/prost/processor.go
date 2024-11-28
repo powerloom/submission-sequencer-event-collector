@@ -379,7 +379,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 
 			// Send the alert
 			clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
-			log.Infof(alertMsg)
+			log.Info(alertMsg)
 		}
 	}
 
@@ -448,7 +448,7 @@ func handleDayTransition(dataMarketAddress string, currentDay *big.Int) error {
 		if err = sendUpdateRewardsToRelayer(dataMarketAddress, nil, nil, cachedDay, eligibleNodesCount); err != nil {
 			errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s: %v", dataMarketAddress, cachedDay, err)
 			clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
-			log.Errorf(errorMsg)
+			log.Error(errorMsg)
 			return err
 		}
 	}
