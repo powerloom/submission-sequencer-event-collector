@@ -382,6 +382,11 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 			// Calculate the day to check
 			dayToCheck := new(big.Int).Sub(currentDay, big.NewInt(int64(day)))
 
+			// Skip processing if day is 0
+			if dayToCheck.Cmp(big.NewInt(0)) == 0 {
+				continue
+			}
+
 			// Initialize retry attempts
 			retryCount := 0
 			for retryCount < config.SettingsObj.RetryLimits {
