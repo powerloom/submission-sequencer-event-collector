@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -545,6 +546,104 @@ func TestHandleEpochSubmissionDetails(t *testing.T) {
 				err = json.Unmarshal([]byte(responseBody), &response)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.response, response.Info.Response)
+			}
+		})
+	}
+}
+
+func TestHandleEligibleSubmissionCount(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the params required
+	dataMarketAddr := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
+	currentDay := "5"
+	epochID := "123"
+
+	// Initialize an array to store the eligible slot submissions
+	eligibleSlotSubmissions := make([]EligibleSubmissionCounts, 0)
+
+	// Set the eligible slot submission count values in hashtable
+	eligibleSlotSubmissionByEpochKey := redis.EligibleSlotSubmissionsByEpochKey(dataMarketAddr, currentDay, epochID)
+	for slotID := 1; slotID <= 5; slotID++ {
+		// Set the eligible slot submission count in Redis
+		err := redis.RedisClient.HSet(context.Background(), eligibleSlotSubmissionByEpochKey, strconv.Itoa(slotID), 10).Err()
+		if err != nil {
+			log.Fatalf("Failed to add eligible slot submission count to hashtable for slotID %d: %v", slotID, err)
+			continue
+		}
+
+		// Append to the eligible submissions list
+		eligibleSlotSubmissions = append(eligibleSlotSubmissions, EligibleSubmissionCounts{SlotID: slotID, Count: 10})
+	}
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		response   EligibleSubmissionCountsResponse
+	}{
+		{
+			name:       "Valid token, epoch submission details fetched",
+			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusOK,
+			response: EligibleSubmissionCountsResponse{
+				SlotCounts: eligibleSlotSubmissions,
+			},
+		},
+		{
+			name:       "Invalid token",
+			body:       `{"epoch_id": 123, "token": "invalid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusUnauthorized,
+			response:   EligibleSubmissionCountsResponse{},
+		},
+		{
+			name:       "Invalid EpochID",
+			body:       `{"epoch_id": -1, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   EligibleSubmissionCountsResponse{},
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			statusCode: http.StatusBadRequest,
+			response:   EligibleSubmissionCountsResponse{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/eligibleSlotSubmissionCount", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleEligibleSlotSubmissionCount)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool                             `json:"success"`
+						Response EligibleSubmissionCountsResponse `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"request_id"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+
+				err = json.Unmarshal([]byte(responseBody), &response)
+				assert.NoError(t, err)
+				assert.Equal(t, len(tt.response.SlotCounts), len(response.Info.Response.SlotCounts))
 			}
 		})
 	}
