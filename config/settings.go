@@ -29,6 +29,8 @@ type Settings struct {
 	PeriodicEligibleCountAlerts bool
 	PastDaysBuffer              int
 	RetryLimits                 int
+	RelayerBatchSize            int
+	EpochInterval               int64
 }
 
 func LoadConfig() {
@@ -76,6 +78,12 @@ func LoadConfig() {
 	}
 	config.BatchSize = batchSize
 
+	relayerBatchSize, relayerBatchSizeParseErr := strconv.Atoi(getEnv("RELAYER_BATCH_SIZE", ""))
+	if relayerBatchSizeParseErr != nil {
+		log.Fatalf("Failed to parse RELAYER_BATCH_SIZE environment variable: %v", batchSizeParseErr)
+	}
+	config.RelayerBatchSize = relayerBatchSize
+
 	blockTime, blockTimeParseErr := strconv.Atoi(getEnv("BLOCK_TIME", ""))
 	if blockTimeParseErr != nil {
 		log.Fatalf("Failed to parse BLOCK_TIME environment variable: %v", blockTimeParseErr)
@@ -99,6 +107,12 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse RETRY_LIMITS environment variable: %v", retryLimitsParseErr)
 	}
 	config.RetryLimits = retryLimits
+
+	epochInterval, epochIntervalParseErr := strconv.Atoi(getEnv("EPOCH_INTERVAL", ""))
+	if epochIntervalParseErr != nil {
+		log.Fatalf("Failed to parse EPOCH_INTERVAL environment variable: %v", epochIntervalParseErr)
+	}
+	config.EpochInterval = int64(epochInterval)
 
 	SettingsObj = &config
 }
