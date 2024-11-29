@@ -243,7 +243,7 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	log.Infof("🔄 Arranged %d batches of submission keys for epoch %s in data market %s", len(batches), epochID.String(), dataMarketAddress)
 
 	// Send the size of the batches to the external tx relayer service
-	if err = sendBatchSizeToRelayer(dataMarketAddress, epochID, len(batches)); err != nil {
+	if err = SendBatchSizeToRelayer(dataMarketAddress, epochID, len(batches)); err != nil {
 		log.Errorf("Failed to send submission batch size for epoch %s in data market %s: %v", epochID, dataMarketAddress, err)
 	}
 
@@ -298,68 +298,6 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	log.Infof("🧹 Successfully removed epoch %s data from Redis for data market %s", epochID.String(), dataMarketAddress)
 }
 
-func getValidSubmissionKeys(ctx context.Context, epochID uint64, headers []string, dataMarketAddress string) ([]string, error) {
-	// Initialize an empty slice to store valid submission keys
-	submissionKeys := make([]string, 0)
-
-	// Iterate through the list of headers
-	for _, header := range headers {
-		keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(dataMarketAddress, epochID, header)).Val()
-		if len(keys) > 0 {
-			submissionKeys = append(submissionKeys, keys...)
-		}
-	}
-
-	return submissionKeys, nil
-}
-
-func constructProjectMap(submissionKeys []string) map[string][]string {
-	// Initialize an empty map to store the projectID and the submission keys
-	projectMap := make(map[string][]string)
-
-	for _, submissionKey := range submissionKeys {
-		parts := strings.Split(submissionKey, ".")
-		if len(parts) != 4 {
-			log.Errorln("Improper submission key stored in Redis: ", submissionKey)
-			clients.SendFailureNotification(pkgs.ConstructProjectMap, fmt.Sprintf("Improper submission key stored in Redis: %s", submissionKey), time.Now().String(), "High")
-			continue // skip malformed entries
-		}
-
-		projectID := parts[2]
-		projectMap[projectID] = append(projectMap[projectID], submissionKey)
-	}
-
-	return projectMap
-}
-
-func arrangeSubmissionKeysInBatches(projectMap map[string][]string) []map[string][]string {
-	batchSize := config.SettingsObj.BatchSize // Target number of project IDs per batch
-	batches := make([]map[string][]string, 0) // Initialize a slice for storing batches
-	currentBatch := make(map[string][]string) // Current batch being filled
-	projectCount := 0                         // Track the number of project IDs in the current batch
-
-	for projectID, submissionKeys := range projectMap {
-		// Add the project to the current batch
-		currentBatch[projectID] = submissionKeys
-		projectCount++
-
-		// If we've reached the batch size, finalize the current batch
-		if projectCount == batchSize {
-			// Add the current batch to the list of batches and reset for a new batch
-			batches = append(batches, currentBatch)
-			currentBatch = make(map[string][]string) // Start a new batch
-			projectCount = 0                         // Reset count for the new batch
-		}
-	}
-
-	// If there are leftover projects that didn't fill a complete batch, add them as well
-	if projectCount > 0 {
-		batches = append(batches, currentBatch)
-	}
-
-	return batches
-}
-
 // Calculate and update total submission count for a data market address
 func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarketAddress string, submissionKeys []string) error {
 	// Fetch the current day
@@ -381,7 +319,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 
 			// Send the alert
 			clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
-			log.Infof(alertMsg)
+			log.Info(alertMsg)
 		}
 
 		for day := 1; day <= int(math.Min(float64(config.SettingsObj.PastDaysBuffer), float64(currentDay.Int64()))); day++ {
@@ -417,7 +355,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 				if err != nil {
 					errorMsg := fmt.Sprintf("❌ Error fetching cached eligible node count for data market %s on day %s: %v", dataMarketAddress, dayToCheck.String(), err)
 					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, errorMsg, time.Now().String(), "Medium")
-					log.Errorf(errorMsg)
+					log.Error(errorMsg)
 					return err
 				}
 
@@ -425,16 +363,16 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					log.Infof("Cached eligible node count found for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), cachedCount)
 
 					// Attempt to update using cached value
-					if err = sendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), cachedCount); err != nil {
+					if err = SendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), cachedCount); err != nil {
 						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using cached count: %v", dataMarketAddress, dayToCheck.String(), err)
 						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
-						log.Errorf(errorMsg)
+						log.Error(errorMsg)
 						return err
 					}
 
 					successMsg := fmt.Sprintf("✅ Successfully updated rewards using cached count: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), cachedCount)
 					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, successMsg, time.Now().String(), "High")
-					log.Infof(successMsg)
+					log.Info(successMsg)
 
 					break
 				} else {
@@ -472,17 +410,17 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					log.Infof("Recalculated eligible nodes count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
 
 					// Attempt to update using recalculated value
-					if err = sendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), eligibleNodes); err != nil {
+					if err = SendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), eligibleNodes); err != nil {
 						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using recalculated count: %v", dataMarketAddress, dayToCheck.String(), err)
 						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
-						log.Errorf(errorMsg)
+						log.Error(errorMsg)
 						retryCount++
 						continue
 					}
 
 					successMsg := fmt.Sprintf("✅ Successfully updated rewards using recalculated count: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
 					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, successMsg, time.Now().String(), "High")
-					log.Infof(successMsg)
+					log.Info(successMsg)
 
 					break
 				}
@@ -578,66 +516,6 @@ func handleDayTransition(dataMarketAddress string, currentDay, epochID *big.Int)
 	return nil
 }
 
-func sendBatchSizeToRelayer(dataMarketAddress string, epochID *big.Int, batchSize int) error {
-	// Define the operation that will be retried
-	operation := func() error {
-		// Attempt to submit the batch size
-		err := clients.SendSubmissionBatchSize(dataMarketAddress, epochID, batchSize)
-		if err != nil {
-			log.Errorf("Error sending submission batch size for epoch %s, data market %s: %v", epochID, dataMarketAddress, err)
-			return err // Return error to trigger retry
-		}
-
-		log.Infof("Successfully submitted batch size for epoch %s, data market %s", epochID, dataMarketAddress)
-		return nil // Successful submission, no need for further retries
-	}
-
-	// Customize the backoff configuration
-	backoffConfig := backoff.NewExponentialBackOff()
-	backoffConfig.InitialInterval = 1 * time.Second // Start with a 1-second delay
-	backoffConfig.Multiplier = 1.5                  // Increase interval by 1.5x after each retry
-	backoffConfig.MaxInterval = 4 * time.Second     // Set max interval between retries
-	backoffConfig.MaxElapsedTime = 10 * time.Second // Retry for a maximum of 10 seconds
-
-	// Limit retries to 3 times within 10 seconds
-	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoffConfig, 3)); err != nil {
-		log.Errorf("Failed to submit batch size for epoch %s, data market %s after multiple retries: %v", epochID, dataMarketAddress, err)
-		return err
-	}
-
-	return nil
-}
-
-func sendUpdateRewardsToRelayer(dataMarketAddress string, slotIDs, submissionsList []*big.Int, day string, eligibleNodes int) error {
-	// Define the operation that will be retried
-	operation := func() error {
-		// Attempt to send the updateRewards request
-		err := clients.SendUpdateRewardsRequest(dataMarketAddress, slotIDs, submissionsList, day, eligibleNodes)
-		if err != nil {
-			log.Errorf("Error sending final updateRewards request for data market %s on day %s: %v. Retrying...", dataMarketAddress, day, err)
-			return err // Return error to trigger retry
-		}
-
-		log.Infof("📤 Successfully sent final updateRewards request for data market %s on day %s", dataMarketAddress, day)
-		return nil // Successful submission, no need for further retries
-	}
-
-	// Customize the backoff configuration
-	backoffConfig := backoff.NewExponentialBackOff()
-	backoffConfig.InitialInterval = 1 * time.Second // Start with a 1-second delay
-	backoffConfig.Multiplier = 1.5                  // Increase interval by 1.5x after each retry
-	backoffConfig.MaxInterval = 4 * time.Second     // Set max interval between retries
-	backoffConfig.MaxElapsedTime = 10 * time.Second // Retry for a maximum of 10 seconds
-
-	// Limit retries to a maximum of 3 attempts within 10 seconds
-	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoffConfig, 3)); err != nil {
-		log.Errorf("Failed to send final updateRewards request after retries for data market %s on day %s: %v", dataMarketAddress, day, err)
-		return err
-	}
-
-	return nil
-}
-
 func sendFinalRewards(currentEpoch *big.Int) {
 	log.Infof("🔍 Initiating day transition check for current epoch: %s", currentEpoch.String())
 
@@ -718,18 +596,6 @@ func sendFinalRewards(currentEpoch *big.Int) {
 	wg.Wait()
 }
 
-// fetchEligibleSlotIDs returns the slot IDs and their count for a given data market and day
-func fetchEligibleSlotIDs(dataMarketAddress, day string) (int, []string) {
-	// Build the Redis key to fetch eligible slot submissions for the specified day
-	eligibleSubmissionsSetKey := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, day)
-
-	// Retrieve the slot IDs stored in the set associated with the Redis key
-	slotIDs := redis.GetSetKeys(context.Background(), eligibleSubmissionsSetKey)
-
-	// Return the slot IDs and their count
-	return len(slotIDs), slotIDs
-}
-
 func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList []*big.Int, currentEpoch *big.Int, eligibleNodesCount int) {
 	// Fetch the batch size from config
 	batchSize := config.SettingsObj.RelayerBatchSize
@@ -753,7 +619,7 @@ func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList 
 				defer wg.Done()
 
 				// Send the updateRewards request to the relayer
-				if err := sendUpdateRewardsToRelayer(dataMarketAddress, slotIDsBatch, submissionsBatch, currentDay, eligibleNodesCount); err != nil {
+				if err := SendUpdateRewardsToRelayer(dataMarketAddress, slotIDsBatch, submissionsBatch, currentDay, eligibleNodesCount); err != nil {
 					errorMsg := fmt.Sprintf("🚨 Relayer batch error in batch %d-%d for data market %s on day %s: %v", start, end, dataMarketAddress, currentDay, err)
 					clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 					log.Error(errorMsg)
@@ -776,7 +642,7 @@ func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList 
 		// Send alert message about eligible nodes count update
 		alertMsg := fmt.Sprintf("🔔 Day Transition Update: Eligible nodes count for data market %s has been updated for day %s: %d", dataMarketAddress, currentDay, eligibleNodesCount)
 		clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
-		log.Infof(alertMsg)
+		log.Info(alertMsg)
 
 		log.Infof("✅ Successfully sent %d batches to relayer for data market %s on day %s", len(slotIDs)/batchSize, dataMarketAddress, currentDay)
 	}
