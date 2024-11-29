@@ -29,6 +29,7 @@ var (
 	ContractABI         abi.ABI
 	epochsInADay        = 720
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
+	BufferEpochs        = 5
 )
 
 func ConfigureClient() {

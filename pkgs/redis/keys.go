@@ -30,6 +30,14 @@ func EpochMarkerSet(dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strings.ToLower(dataMarketAddress))
 }
 
+func DayRolloverEpochMarkerSet(dataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s", pkgs.DayRolloverEpochMarkerSetKey, strings.ToLower(dataMarketAddress))
+}
+
+func DayRolloverEpochMarkerDetails(dataMarketAddress, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.DayRolloverEpochMarkerDetailsKey, strings.ToLower(dataMarketAddress), epochID)
+}
+
 func EpochMarkerDetails(dataMarketAddress, epochID string) string {
 	return fmt.Sprintf("%s.%s.%s", pkgs.EpochMarkerDetailsKey, strings.ToLower(dataMarketAddress), epochID)
 }
