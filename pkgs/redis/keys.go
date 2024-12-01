@@ -81,3 +81,7 @@ func EpochSubmissionsKey(dataMarketAddress string, epochID uint64) string {
 func EligibleSlotSubmissionsByEpochKey(dataMarketAddress, currentDay, epochID string) string {
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.EligibleSlotSubmissionByEpochKey, strings.ToLower(dataMarketAddress), currentDay, epochID)
 }
+
+func DiscardedSubmissionsKey(dataMarketAddress, currentDay, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s.%s", pkgs.DiscardedSubmissionKey, strings.ToLower(dataMarketAddress), currentDay, epochID)
+}

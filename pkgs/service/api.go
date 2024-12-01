@@ -98,6 +98,21 @@ type EligibleSubmissionCountsResponse struct {
 	SlotCounts []EligibleSubmissionCounts `json:"eligible_submission_counts"`
 }
 
+type DiscardedSubmissionDetails struct {
+	MostFrequentSnapshotCID  string              `json:"mostFrequentSnapshotCID"`
+	DiscardedSubmissionCount int                 `json:"discardedSubmissionCount"`
+	DiscardedSubmissions     map[string][]string `json:"discardedSubmissions"`
+}
+
+type DiscardedSubmissionDetailsResponse struct {
+	ProjectID string                     `json:"projectID"`
+	Details   DiscardedSubmissionDetails `json:"details"`
+}
+
+type DiscardedSubmissionsAPIResponse struct {
+	Projects []DiscardedSubmissionDetailsResponse `json:"projects"`
+}
+
 type InfoType[K any] struct {
 	Success  bool `json:"success"`
 	Response K    `json:"response"`
@@ -886,6 +901,110 @@ func handleEligibleSlotSubmissionCount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleDiscardedSubmissions godoc
+// @Summary Get discarded submission details
+// @Description Retrieves the discarded submissions details within a specific epoch for a given data market address
+// @Tags Discarded Submissions
+// @Accept json
+// @Produce json
+// @Param request body EpochDataMarketDayRequest true "Epoch data market day request payload"
+// @Success 200 {object} Response[DiscardedSubmissionsAPIResponse]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, invalid day or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Router /discardedSubmissions [post]
+func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
+	var request EpochDataMarketDayRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	day := request.Day
+	if day <= 0 {
+		http.Error(w, "Invalid day!", http.StatusBadRequest)
+		return
+	}
+
+	epochID := request.EpochID
+	if epochID <= 0 {
+		http.Error(w, "EpochID is missing or invalid", http.StatusBadRequest)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	// Construct the Redis key for the discarded submission details
+	discardedKey := redis.DiscardedSubmissionsKey(request.DataMarketAddress, strconv.Itoa(day), strconv.Itoa(epochID))
+
+	// Fetch all the project details from the Redis hash
+	discardedDetailsMap, err := redis.RedisClient.HGetAll(context.Background(), discardedKey).Result()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Internal Server Error: Failed to fetch discarded submission details from Redis for epoch %v", epochID), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare the response data
+	var responseProjects []DiscardedSubmissionDetailsResponse
+	for projectID, detailsJSON := range discardedDetailsMap {
+		var details DiscardedSubmissionDetails
+
+		// Deserialize the JSON string
+		if err := json.Unmarshal([]byte(detailsJSON), &details); err != nil {
+			log.Errorf("Failed to deserialize discarded submission details for project %s: %v", projectID, err)
+			continue
+		}
+
+		// Append to the response list
+		responseProjects = append(responseProjects, DiscardedSubmissionDetailsResponse{
+			ProjectID: projectID,
+			Details:   details,
+		})
+
+		// Break if we have 50 projects
+		if len(responseProjects) == 50 {
+			break
+		}
+	}
+
+	// Construct the final API response
+	apiResponse := DiscardedSubmissionsAPIResponse{
+		Projects: responseProjects,
+	}
+
+	info := InfoType[DiscardedSubmissionsAPIResponse]{
+		Success:  true,
+		Response: apiResponse,
+	}
+
+	response := Response[DiscardedSubmissionsAPIResponse]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func RequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.New().String()
@@ -911,6 +1030,7 @@ func StartApiServer() {
 	mux.HandleFunc("/batchCount", handleBatchCount)
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
 	mux.HandleFunc("/eligibleSlotSubmissionCount", handleEligibleSlotSubmissionCount)
+	mux.HandleFunc("/discardedSubmissions", handleDiscardedSubmissions)
 
 	handler := RequestMiddleware(mux)
 

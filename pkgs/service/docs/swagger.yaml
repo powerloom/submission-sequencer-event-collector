@@ -12,6 +12,33 @@ definitions:
       submissions:
         type: integer
     type: object
+  service.DiscardedSubmissionDetails:
+    properties:
+      discardedSubmissionCount:
+        type: integer
+      discardedSubmissions:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+      mostFrequentSnapshotCID:
+        type: string
+    type: object
+  service.DiscardedSubmissionDetailsResponse:
+    properties:
+      details:
+        $ref: '#/definitions/service.DiscardedSubmissionDetails'
+      projectID:
+        type: string
+    type: object
+  service.DiscardedSubmissionsAPIResponse:
+    properties:
+      projects:
+        items:
+          $ref: '#/definitions/service.DiscardedSubmissionDetailsResponse'
+        type: array
+    type: object
   service.EligibleNodes:
     properties:
       day:
@@ -75,6 +102,13 @@ definitions:
       success:
         type: boolean
     type: object
+  service.InfoType-service_DiscardedSubmissionsAPIResponse:
+    properties:
+      response:
+        $ref: '#/definitions/service.DiscardedSubmissionsAPIResponse'
+      success:
+        type: boolean
+    type: object
   service.InfoType-service_EligibleSubmissionCountsResponse:
     properties:
       response:
@@ -104,6 +138,13 @@ definitions:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_BatchCount'
+      request_id:
+        type: string
+    type: object
+  service.Response-service_DiscardedSubmissionsAPIResponse:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse'
       request_id:
         type: string
     type: object
@@ -182,6 +223,38 @@ paths:
       summary: Get total batch count
       tags:
       - Batch Count
+  /discardedSubmissions:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the discarded submissions details within a specific epoch
+        for a given data market address
+      parameters:
+      - description: Epoch data market day request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EpochDataMarketDayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_DiscardedSubmissionsAPIResponse'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., missing or invalid
+            epochID, invalid day or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get discarded submission details
+      tags:
+      - Discarded Submissions
   /eligibleNodesCount:
     post:
       consumes:

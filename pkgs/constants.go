@@ -34,4 +34,5 @@ const (
 	EpochSubmissionsCountKey         = "EpochSubmissionsCountKey"
 	EpochSubmissionsKey              = "EpochSubmissionsKey"
 	EligibleSlotSubmissionByEpochKey = "EligibleSlotSubmissionByEpochKey"
+	DiscardedSubmissionKey           = "DiscardedSubmissionKey"
 )

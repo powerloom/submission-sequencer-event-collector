@@ -66,6 +66,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/discardedSubmissions": {
+            "post": {
+                "description": "Retrieves the discarded submissions details within a specific epoch for a given data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discarded Submissions"
+                ],
+                "summary": "Get discarded submission details",
+                "parameters": [
+                    {
+                        "description": "Epoch data market day request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.EpochDataMarketDayRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_DiscardedSubmissionsAPIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, invalid day or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/eligibleNodesCount": {
             "post": {
                 "description": "Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address and epochID across a specified number of past days",
@@ -317,6 +363,48 @@ const docTemplate = `{
                 }
             }
         },
+        "service.DiscardedSubmissionDetails": {
+            "type": "object",
+            "properties": {
+                "discardedSubmissionCount": {
+                    "type": "integer"
+                },
+                "discardedSubmissions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "mostFrequentSnapshotCID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.DiscardedSubmissionDetailsResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "$ref": "#/definitions/service.DiscardedSubmissionDetails"
+                },
+                "projectID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.DiscardedSubmissionsAPIResponse": {
+            "type": "object",
+            "properties": {
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.DiscardedSubmissionDetailsResponse"
+                    }
+                }
+            }
+        },
         "service.EligibleNodes": {
             "type": "object",
             "properties": {
@@ -415,6 +503,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.InfoType-service_DiscardedSubmissionsAPIResponse": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "$ref": "#/definitions/service.DiscardedSubmissionsAPIResponse"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "service.InfoType-service_EligibleSubmissionCountsResponse": {
             "type": "object",
             "properties": {
@@ -459,6 +558,17 @@ const docTemplate = `{
             "properties": {
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_BatchCount"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.Response-service_DiscardedSubmissionsAPIResponse": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse"
                 },
                 "request_id": {
                     "type": "string"
