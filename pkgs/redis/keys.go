@@ -10,6 +10,10 @@ func GetDaySizeTableKey() string {
 	return pkgs.DaySizeTableKey
 }
 
+func GetDailySnapshotQuotaTableKey() string {
+	return pkgs.DailySnapshotQuotaTableKey
+}
+
 func GetSubmissionLimitTableKey() string {
 	return pkgs.SubmissionLimitTableKey
 }
@@ -18,8 +22,20 @@ func GetCurrentDayKey(dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%s", pkgs.CurrentDayKey, strings.ToLower(dataMarketAddress))
 }
 
+func LastKnownDay(dataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s", pkgs.LastKnownDayKey, strings.ToLower(dataMarketAddress))
+}
+
 func EpochMarkerSet(dataMarketAddress string) string {
 	return fmt.Sprintf("%s.%s", pkgs.EpochMarkerSetKey, strings.ToLower(dataMarketAddress))
+}
+
+func DayRolloverEpochMarkerSet(dataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s", pkgs.DayRolloverEpochMarkerSetKey, strings.ToLower(dataMarketAddress))
+}
+
+func DayRolloverEpochMarkerDetails(dataMarketAddress, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.DayRolloverEpochMarkerDetailsKey, strings.ToLower(dataMarketAddress), epochID)
 }
 
 func EpochMarkerDetails(dataMarketAddress, epochID string) string {

@@ -110,6 +110,22 @@ func GetDaySize(ctx context.Context, dataMarketAddress string) (*big.Int, error)
 	return daySize, nil
 }
 
+func GetDailySnapshotQuota(ctx context.Context, dataMarketAddress string) (*big.Int, error) {
+	// Fetch daily snapshot quota for the given data market address from Redis
+	dailySnapshotQuotaStr, err := RedisClient.HGet(context.Background(), GetDailySnapshotQuotaTableKey(), dataMarketAddress).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch daily snapshot quota for data market %s: %s", dataMarketAddress, err)
+	}
+
+	// Convert the daily snapshot quota from string to *big.Int
+	dailySnapshotQuota, ok := new(big.Int).SetString(dailySnapshotQuotaStr, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid daily snapshot quota value for data market %s: %s", dataMarketAddress, dailySnapshotQuotaStr)
+	}
+
+	return dailySnapshotQuota, nil
+}
+
 // StoreEpochDetails stores the epoch ID in the master set and its associated details in Redis
 func StoreEpochDetails(ctx context.Context, dataMarketAddress, epochID, details string) error {
 	// Store the epoch ID in the master set
@@ -125,6 +141,21 @@ func StoreEpochDetails(ctx context.Context, dataMarketAddress, epochID, details 
 	return nil
 }
 
+// StoreDayTransitionEpochDetails stores the epoch ID in the master set and its associated day transition details in Redis
+func StoreDayTransitionEpochDetails(ctx context.Context, dataMarketAddress, epochID, details string) error {
+	// Store the epoch ID in the master set
+	if err := AddToSet(ctx, DayRolloverEpochMarkerSet(dataMarketAddress), epochID); err != nil {
+		return fmt.Errorf("failed to add epoch %s to day roll over master set for data market %s: %w", epochID, dataMarketAddress, err)
+	}
+
+	// Store the day transition details for the specified epochID related to the given data market in Redis
+	if err := Set(ctx, DayRolloverEpochMarkerDetails(dataMarketAddress, epochID), details); err != nil {
+		return fmt.Errorf("failed to store day rollover epoch details for epoch %s, data market %s in Redis: %w", epochID, dataMarketAddress, err)
+	}
+
+	return nil
+}
+
 func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string) error {
 	// Remove the epoch marker from the master set
 	if err := RedisClient.SRem(ctx, EpochMarkerSet(dataMarketAddress), epochID).Err(); err != nil {
@@ -133,6 +164,19 @@ func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string
 
 	if expireErr := RedisClient.Expire(ctx, EpochMarkerDetails(dataMarketAddress, epochID), 30*time.Minute).Err(); expireErr != nil {
 		return fmt.Errorf("failed to set expiry for epoch marker details of epoch %s, data market %s: %w", epochID, dataMarketAddress, expireErr)
+	}
+
+	return nil
+}
+
+func RemoveDayTransitionEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string) error {
+	// Remove the epoch marker from the day transition master set
+	if err := RedisClient.SRem(ctx, DayRolloverEpochMarkerSet(dataMarketAddress), epochID).Err(); err != nil {
+		return fmt.Errorf("failed to delete epoch %s from day transition master set for data market %s from Redis: %w", epochID, dataMarketAddress, err)
+	}
+
+	if expireErr := RedisClient.Expire(ctx, DayRolloverEpochMarkerDetails(dataMarketAddress, epochID), 30*time.Minute).Err(); expireErr != nil {
+		return fmt.Errorf("failed to set expiry for day transition epoch marker details of epoch %s, data market %s: %w", epochID, dataMarketAddress, expireErr)
 	}
 
 	return nil

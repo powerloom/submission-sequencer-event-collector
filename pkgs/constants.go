@@ -3,13 +3,14 @@ package pkgs
 // Process Name Constants
 // process : identifier
 const (
-	StartFetchingBlocks        = "StartFetchingBlocks"
-	ProcessEvents              = "ProcessEvents"
-	ConstructProjectMap        = "ConstructProjectMap"
-	SendSubmissionBatchSize    = "SendSubmissionBatchSize"
-	UpdateSlotSubmissionCount  = "UpdateSlotSubmissionCount"
-	SendEligibleNodesCount     = "SendEligibleNodesCount"
-	SendUpdateRewardsToRelayer = "SendUpdateRewardsToRelayer"
+	StartFetchingBlocks        = "SequencerEventCollector: StartFetchingBlocks"
+	ProcessEvents              = "SequencerEventCollector: ProcessEvents"
+	ConstructProjectMap        = "SequencerEventCollector: ConstructProjectMap"
+	SendSubmissionBatchSize    = "SequencerEventCollector: SendSubmissionBatchSize"
+	UpdateSlotSubmissionCount  = "SequencerEventCollector: UpdateSlotSubmissionCount"
+	SendEligibleNodesCount     = "SequencerEventCollector: SendEligibleNodesCount"
+	SendUpdateRewardsToRelayer = "SequencerEventCollector: SendUpdateRewardsToRelayer"
+	HandleDayTransition        = "SequencerEventCollector: HandleDayTransition"
 )
 
 // General Key Constants
@@ -19,6 +20,8 @@ const (
 	BatchCountKey                    = "BatchCountKey"
 	CollectorKey                     = "SnapshotCollector"
 	EpochMarkerSetKey                = "EpochMarkerSetKey"
+	DayRolloverEpochMarkerSetKey     = "DayRolloverEpochMarkerSetKey"
+	DayRolloverEpochMarkerDetailsKey = "DayRolloverEpochMarkerDetailsKey"
 	EpochMarkerDetailsKey            = "EpochMarkerDetailsKey"
 	BlockHashByNumberKey             = "BlockHashByNumberKey"
 	SubmissionLimitTableKey          = "SubmissionLimitTable"
@@ -26,6 +29,8 @@ const (
 	SlotSubmissionsKey               = "SlotSubmissionsKey"
 	EligibleSlotSubmissionsKey       = "EligibleSlotSubmissionsKey"
 	EligibleSlotSubmissionByDayKey   = "EligibleSlotSubmissionByDayKey"
+	LastKnownDayKey                  = "LastKnownDayKey"
+	DailySnapshotQuotaTableKey       = "DailySnapshotQuotaTableKey"
 	EpochSubmissionsCountKey         = "EpochSubmissionsCountKey"
 	EpochSubmissionsKey              = "EpochSubmissionsKey"
 	EligibleSlotSubmissionByEpochKey = "EligibleSlotSubmissionByEpochKey"
