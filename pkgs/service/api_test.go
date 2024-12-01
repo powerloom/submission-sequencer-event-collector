@@ -649,6 +649,138 @@ func TestHandleEligibleSubmissionCount(t *testing.T) {
 	}
 }
 
+func TestHandleDiscardedSubmissions(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the params required
+	dataMarketAddr := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
+	currentDay := "5"
+	epochID := "123"
+
+	// Set up the discarded submissions map
+	discardedSubmissionsMap := map[string]*DiscardedSubmissionDetails{
+		"project1": {
+			MostFrequentSnapshotCID:  "CID0",
+			DiscardedSubmissionCount: 1,
+			DiscardedSubmissions:     map[string][]string{"2": {"CID1"}},
+		},
+		"project2": {
+			MostFrequentSnapshotCID:  "CID1",
+			DiscardedSubmissionCount: 1,
+			DiscardedSubmissions:     map[string][]string{"3": {"CID5"}},
+		},
+		"project3": {
+			MostFrequentSnapshotCID:  "CID2",
+			DiscardedSubmissionCount: 1,
+			DiscardedSubmissions:     map[string][]string{"5": {"CID6"}},
+		},
+	}
+
+	// Store the discarded submission details
+	err := storeDiscardedSubmissionDetails(dataMarketAddr, currentDay, epochID, discardedSubmissionsMap)
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		response   DiscardedSubmissionsAPIResponse
+	}{
+		{
+			name:       "Valid token, epoch submission details fetched",
+			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusOK,
+			response: DiscardedSubmissionsAPIResponse{
+				Projects: []DiscardedSubmissionDetailsResponse{
+					{ProjectID: "project1", Details: *discardedSubmissionsMap["project1"]},
+					{ProjectID: "project2", Details: *discardedSubmissionsMap["project2"]},
+					{ProjectID: "project3", Details: *discardedSubmissionsMap["project3"]},
+				},
+			},
+		},
+		{
+			name:       "Invalid token",
+			body:       `{"epoch_id": 123, "token": "invalid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusUnauthorized,
+			response:   DiscardedSubmissionsAPIResponse{},
+		},
+		{
+			name:       "Invalid EpochID",
+			body:       `{"epoch_id": -1, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   DiscardedSubmissionsAPIResponse{},
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			statusCode: http.StatusBadRequest,
+			response:   DiscardedSubmissionsAPIResponse{},
+		},
+	}
+
+	// Helper function to send HTTP request and return the response
+	sendRequest := func(body string) (*httptest.ResponseRecorder, error) {
+		req, err := http.NewRequest("POST", "/discardedSubmissions", strings.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(handleDiscardedSubmissions)
+		RequestMiddleware(handler).ServeHTTP(rr, req)
+		return rr, nil
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Send the request
+			rr, err := sendRequest(tt.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Assert the status code
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			// If the status code is OK, compare the response
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool                            `json:"success"`
+						Response DiscardedSubmissionsAPIResponse `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"request_id"`
+				}
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.response.Projects, response.Info.Response.Projects)
+			}
+		})
+	}
+}
+
+func storeDiscardedSubmissionDetails(dataMarketAddress, currentDay, epochID string, discardedSubmissionsMap map[string]*DiscardedSubmissionDetails) error {
+	// Construct the Redis main key for discarded submission details
+	discardedKey := redis.DiscardedSubmissionsKey(dataMarketAddress, currentDay, epochID)
+
+	// Write discarded submission details to Redis as a hashtable
+	for projectID, details := range discardedSubmissionsMap {
+		// Serialize the DiscardedSubmissionDetails struct
+		detailsJSON, err := json.Marshal(details)
+		if err != nil {
+			return fmt.Errorf("failed to serialize discarded submission details for project %s: %v", projectID, err)
+		}
+
+		// Store the details in the Redis hashtable
+		if err := redis.RedisClient.HSet(context.Background(), discardedKey, projectID, detailsJSON).Err(); err != nil {
+			fmt.Errorf("failed to write discarded submission details for project %s to Redis: %v", projectID, err)
+		}
+	}
+
+	return nil
+}
+
 func getEpochSubmissionDetails(count int) map[string]*pkgs.SnapshotSubmission {
 	epochSubmissions := make(map[string]*pkgs.SnapshotSubmission)
 
