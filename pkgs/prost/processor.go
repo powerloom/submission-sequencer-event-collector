@@ -308,7 +308,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 	}
 
 	// Send eligible nodes count and slotIDs only if the current epoch is a multiple of epoch interval (config param)
-	if epochID.Int64()%config.SettingsObj.EpochInterval == 0 {
+	if epochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
 		if config.SettingsObj.PeriodicEligibleCountAlerts {
 			// Fetch the slotIDs whose eligible submissions are recorded for the current day
 			eligibleSlotSubmissionsByDayKeys := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay.String())
@@ -598,10 +598,10 @@ func sendFinalRewards(currentEpoch *big.Int) {
 
 func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList []*big.Int, currentEpoch *big.Int, eligibleNodesCount int) {
 	// Fetch the batch size from config
-	batchSize := config.SettingsObj.RelayerBatchSize
+	batchSize := config.SettingsObj.RewardsUpdateBatchSize
 
 	// Send submission count to relayer only if the current epoch is a multiple of epoch interval (config param)
-	if currentEpoch.Int64()%config.SettingsObj.EpochInterval == 0 {
+	if currentEpoch.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
 		var wg sync.WaitGroup
 
 		// Process the data in batches
