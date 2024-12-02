@@ -17,6 +17,7 @@ const (
 const (
 	CurrentDayKey                    = "CurrentDayKey"
 	DaySizeTableKey                  = "DaySizeTableKey"
+	BatchCountKey                    = "BatchCountKey"
 	CollectorKey                     = "SnapshotCollector"
 	EpochMarkerSetKey                = "EpochMarkerSetKey"
 	DayRolloverEpochMarkerSetKey     = "DayRolloverEpochMarkerSetKey"
@@ -30,4 +31,8 @@ const (
 	EligibleSlotSubmissionByDayKey   = "EligibleSlotSubmissionByDayKey"
 	LastKnownDayKey                  = "LastKnownDayKey"
 	DailySnapshotQuotaTableKey       = "DailySnapshotQuotaTableKey"
+	EpochSubmissionsCountKey         = "EpochSubmissionsCountKey"
+	EpochSubmissionsKey              = "EpochSubmissionsKey"
+	EligibleSlotSubmissionByEpochKey = "EligibleSlotSubmissionByEpochKey"
+	DiscardedSubmissionKey           = "DiscardedSubmissionKey"
 )

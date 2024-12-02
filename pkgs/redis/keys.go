@@ -62,6 +62,26 @@ func BatchSubmissionKey(dataMarketAddress, epochID, batchID string) string {
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.BatchSubmissionsKey, strings.ToLower(dataMarketAddress), epochID, batchID)
 }
 
+func GetBatchCountKey(dataMarketAddress, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.BatchCountKey, strings.ToLower(dataMarketAddress), epochID)
+}
+
 func EligibleSlotSubmissionsByDayKey(dataMarketAddress, currentDay string) string {
 	return fmt.Sprintf("%s.%s.%s", pkgs.EligibleSlotSubmissionByDayKey, strings.ToLower(dataMarketAddress), currentDay)
+}
+
+func EpochSubmissionsCount(dataMarketAddress string, epochID uint64) string {
+	return fmt.Sprintf("%s.%s.%d", pkgs.EpochSubmissionsCountKey, strings.ToLower(dataMarketAddress), epochID)
+}
+
+func EpochSubmissionsKey(dataMarketAddress string, epochID uint64) string {
+	return fmt.Sprintf("%s.%s.%d", pkgs.EpochSubmissionsKey, strings.ToLower(dataMarketAddress), epochID)
+}
+
+func EligibleSlotSubmissionsByEpochKey(dataMarketAddress, currentDay, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s.%s", pkgs.EligibleSlotSubmissionByEpochKey, strings.ToLower(dataMarketAddress), currentDay, epochID)
+}
+
+func DiscardedSubmissionsKey(dataMarketAddress, currentDay, epochID string) string {
+	return fmt.Sprintf("%s.%s.%s.%s", pkgs.DiscardedSubmissionKey, strings.ToLower(dataMarketAddress), currentDay, epochID)
 }

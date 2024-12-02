@@ -1,11 +1,136 @@
 basePath: /
 definitions:
+  service.BatchCount:
+    properties:
+      total_batches:
+        type: integer
+    type: object
   service.DailySubmissions:
     properties:
       day:
         type: integer
       submissions:
         type: integer
+    type: object
+  service.DiscardedSubmissionDetails:
+    properties:
+      discardedSubmissionCount:
+        type: integer
+      discardedSubmissions:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+      mostFrequentSnapshotCID:
+        type: string
+    type: object
+  service.DiscardedSubmissionDetailsResponse:
+    properties:
+      details:
+        $ref: '#/definitions/service.DiscardedSubmissionDetails'
+      projectID:
+        type: string
+    type: object
+  service.DiscardedSubmissionsAPIResponse:
+    properties:
+      projects:
+        items:
+          $ref: '#/definitions/service.DiscardedSubmissionDetailsResponse'
+        type: array
+    type: object
+  service.EligibleNodes:
+    properties:
+      day:
+        type: integer
+      eligible_nodes_count:
+        type: integer
+      slot_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  service.EligibleNodesRequest:
+    properties:
+      data_market_address:
+        type: string
+      epoch_id:
+        type: integer
+      past_days:
+        type: integer
+      token:
+        type: string
+    type: object
+  service.EligibleSubmissionCounts:
+    properties:
+      count:
+        type: integer
+      slot_id:
+        type: integer
+    type: object
+  service.EligibleSubmissionCountsResponse:
+    properties:
+      eligible_submission_counts:
+        items:
+          $ref: '#/definitions/service.EligibleSubmissionCounts'
+        type: array
+    type: object
+  service.EpochDataMarketDayRequest:
+    properties:
+      data_market_address:
+        type: string
+      day:
+        type: integer
+      epoch_id:
+        type: integer
+      token:
+        type: string
+    type: object
+  service.EpochDataMarketRequest:
+    properties:
+      data_market_address:
+        type: string
+      epoch_id:
+        type: integer
+      token:
+        type: string
+    type: object
+  service.EpochSubmissionSummary:
+    properties:
+      epoch_submission_count:
+        type: integer
+      submissions:
+        items:
+          $ref: '#/definitions/service.SubmissionDetails'
+        type: array
+    type: object
+  service.InfoType-service_BatchCount:
+    properties:
+      response:
+        $ref: '#/definitions/service.BatchCount'
+      success:
+        type: boolean
+    type: object
+  service.InfoType-service_DiscardedSubmissionsAPIResponse:
+    properties:
+      response:
+        $ref: '#/definitions/service.DiscardedSubmissionsAPIResponse'
+      success:
+        type: boolean
+    type: object
+  service.InfoType-service_EligibleSubmissionCountsResponse:
+    properties:
+      response:
+        $ref: '#/definitions/service.EligibleSubmissionCountsResponse'
+      success:
+        type: boolean
+    type: object
+  service.InfoType-service_EpochSubmissionSummary:
+    properties:
+      response:
+        $ref: '#/definitions/service.EpochSubmissionSummary'
+      success:
+        type: boolean
     type: object
   service.InfoType-service_ResponseArray-service_DailySubmissions:
     properties:
@@ -16,11 +141,84 @@ definitions:
       success:
         type: boolean
     type: object
+  service.InfoType-service_ResponseArray-service_EligibleNodes:
+    properties:
+      response:
+        items:
+          $ref: '#/definitions/service.EligibleNodes'
+        type: array
+      success:
+        type: boolean
+    type: object
+  service.RequestSwagger:
+    properties:
+      deadline:
+        type: integer
+      epochID:
+        type: integer
+      projectID:
+        type: string
+      slotID:
+        type: integer
+      snapshotCID:
+        type: string
+    type: object
+  service.Response-service_BatchCount:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_BatchCount'
+      request_id:
+        type: string
+    type: object
+  service.Response-service_DiscardedSubmissionsAPIResponse:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse'
+      request_id:
+        type: string
+    type: object
+  service.Response-service_EligibleSubmissionCountsResponse:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_EligibleSubmissionCountsResponse'
+      request_id:
+        type: string
+    type: object
+  service.Response-service_EpochSubmissionSummary:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_EpochSubmissionSummary'
+      request_id:
+        type: string
+    type: object
   service.Response-service_ResponseArray-service_DailySubmissions:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_ResponseArray-service_DailySubmissions'
       request_id:
+        type: string
+    type: object
+  service.Response-service_ResponseArray-service_EligibleNodes:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_ResponseArray-service_EligibleNodes'
+      request_id:
+        type: string
+    type: object
+  service.SnapshotSubmissionSwagger:
+    properties:
+      header:
+        type: string
+      request:
+        $ref: '#/definitions/service.RequestSwagger'
+      signature:
+        type: string
+    type: object
+  service.SubmissionDetails:
+    properties:
+      submission_data:
+        $ref: '#/definitions/service.SnapshotSubmissionSwagger'
+      submission_id:
         type: string
     type: object
   service.SubmissionsRequest:
@@ -45,6 +243,135 @@ info:
   title: My API Documentation
   version: "1.0"
 paths:
+  /batchCount:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the total number of batches created within a specific
+        epoch for a given data market address
+      parameters:
+      - description: Epoch data market request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EpochDataMarketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_BatchCount'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., missing or invalid
+            epochID, or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get total batch count
+      tags:
+      - Batch Count
+  /discardedSubmissions:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the discarded submissions details within a specific epoch
+        for a given data market address
+      parameters:
+      - description: Epoch data market day request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EpochDataMarketDayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_DiscardedSubmissionsAPIResponse'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., missing or invalid
+            epochID, invalid day or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get discarded submission details
+      tags:
+      - Discarded Submissions
+  /eligibleNodesCount:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the total count of eligible nodes along with their corresponding
+        slotIDs for a specified data market address and epochID across a specified
+        number of past days
+      parameters:
+      - description: Eligible nodes count payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EligibleNodesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_ResponseArray-service_EligibleNodes'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
+            missing or invalid epochID, or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get eligible nodes count
+      tags:
+      - Eligible Nodes Count
+  /eligibleSlotSubmissionCount:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the submission counts of all eligible slotIDs within
+        a specific epoch for a given data market address
+      parameters:
+      - description: Epoch data market day request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EpochDataMarketDayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_EligibleSubmissionCountsResponse'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., missing or invalid
+            epochID, invalid day or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get the submission counts of all eligible slotIDs
+      tags:
+      - Eligible Submission Count
   /eligibleSubmissions:
     post:
       consumes:
@@ -75,6 +402,70 @@ paths:
           schema:
             type: string
       summary: Get eligible submissions
+      tags:
+      - Submissions
+  /epochSubmissionDetails:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the submission count and details of all submissions for
+        a specific epoch and data market address
+      parameters:
+      - description: Epoch data market request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EpochDataMarketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_EpochSubmissionSummary'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., missing or invalid
+            epochID, or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get epoch submission details
+      tags:
+      - Submissions
+  /totalEligibleSubmissions:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves total eligible submission counts for a specific data
+        market address across a specified number of past days
+      parameters:
+      - description: Submissions request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.SubmissionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_ResponseArray-service_DailySubmissions'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
+            invalid slotID or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get total eligible submissions
       tags:
       - Submissions
   /totalSubmissions:
