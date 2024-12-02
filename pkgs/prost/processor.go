@@ -599,34 +599,29 @@ func sendFinalRewards(currentEpoch *big.Int) {
 func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList []*big.Int, currentEpoch *big.Int, eligibleNodesCount int) {
 	// Fetch the batch size from config
 	batchSize := config.SettingsObj.RewardsUpdateBatchSize
-
-	// Send submission count to relayer only if the current epoch is a multiple of epoch interval (config param)
-	if currentEpoch.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
-		var wg sync.WaitGroup
-
-		// Process the data in batches
-		for start := 0; start < len(slotIDs); start += batchSize {
-			end := start + batchSize
-			if end > len(slotIDs) {
-				end = len(slotIDs)
-			}
-
-			slotIDsBatch := slotIDs[start:end]
-			submissionsBatch := submissionsList[start:end]
-
-			wg.Add(1)
-			go func(slotIDsBatch, submissionsBatch []*big.Int) {
-				defer wg.Done()
-
-				// Send the updateRewards request to the relayer
-				if err := SendUpdateRewardsToRelayer(dataMarketAddress, slotIDsBatch, submissionsBatch, currentDay, eligibleNodesCount); err != nil {
-					errorMsg := fmt.Sprintf("🚨 Relayer batch error in batch %d-%d for data market %s on day %s: %v", start, end, dataMarketAddress, currentDay, err)
-					clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
-					log.Error(errorMsg)
-					return
-				}
-			}(slotIDsBatch, submissionsBatch)
+	var wg sync.WaitGroup
+	// Process the data in batches
+	for start := 0; start < len(slotIDs); start += batchSize {
+		end := start + batchSize
+		if end > len(slotIDs) {
+			end = len(slotIDs)
 		}
+
+		slotIDsBatch := slotIDs[start:end]
+		submissionsBatch := submissionsList[start:end]
+
+		wg.Add(1)
+		go func(slotIDsBatch, submissionsBatch []*big.Int) {
+			defer wg.Done()
+
+			// Send the updateRewards request to the relayer
+			if err := SendUpdateRewardsToRelayer(dataMarketAddress, slotIDsBatch, submissionsBatch, currentDay, eligibleNodesCount); err != nil {
+				errorMsg := fmt.Sprintf("🚨 Relayer batch error in batch %d-%d for data market %s on day %s: %v", start, end, dataMarketAddress, currentDay, err)
+				clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
+				log.Error(errorMsg)
+				return
+			}
+		}(slotIDsBatch, submissionsBatch)
 
 		// Wait for all batches to complete
 		wg.Wait()
