@@ -250,6 +250,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/epochSubmissionDetails": {
+            "post": {
+                "description": "Retrieves the submission count and details of all submissions for a specific epoch and data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Submissions"
+                ],
+                "summary": "Get epoch submission details",
+                "parameters": [
+                    {
+                        "description": "Epoch data market request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.EpochDataMarketRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_EpochSubmissionSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/totalEligibleSubmissions": {
             "post": {
                 "description": "Retrieves total eligible submission counts for a specific data market address across a specified number of past days",
@@ -492,6 +538,20 @@ const docTemplate = `{
                 }
             }
         },
+        "service.EpochSubmissionSummary": {
+            "type": "object",
+            "properties": {
+                "epoch_submission_count": {
+                    "type": "integer"
+                },
+                "submissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.SubmissionDetails"
+                    }
+                }
+            }
+        },
         "service.InfoType-service_BatchCount": {
             "type": "object",
             "properties": {
@@ -525,6 +585,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.InfoType-service_EpochSubmissionSummary": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "$ref": "#/definitions/service.EpochSubmissionSummary"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "service.InfoType-service_ResponseArray-service_DailySubmissions": {
             "type": "object",
             "properties": {
@@ -550,6 +621,26 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
+                }
+            }
+        },
+        "service.RequestSwagger": {
+            "type": "object",
+            "properties": {
+                "deadline": {
+                    "type": "integer"
+                },
+                "epochID": {
+                    "type": "integer"
+                },
+                "projectID": {
+                    "type": "string"
+                },
+                "slotID": {
+                    "type": "integer"
+                },
+                "snapshotCID": {
+                    "type": "string"
                 }
             }
         },
@@ -586,6 +677,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.Response-service_EpochSubmissionSummary": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_EpochSubmissionSummary"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
         "service.Response-service_ResponseArray-service_DailySubmissions": {
             "type": "object",
             "properties": {
@@ -604,6 +706,31 @@ const docTemplate = `{
                     "$ref": "#/definitions/service.InfoType-service_ResponseArray-service_EligibleNodes"
                 },
                 "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.SnapshotSubmissionSwagger": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "type": "string"
+                },
+                "request": {
+                    "$ref": "#/definitions/service.RequestSwagger"
+                },
+                "signature": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.SubmissionDetails": {
+            "type": "object",
+            "properties": {
+                "submission_data": {
+                    "$ref": "#/definitions/service.SnapshotSubmissionSwagger"
+                },
+                "submission_id": {
                     "type": "string"
                 }
             }

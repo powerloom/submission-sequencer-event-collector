@@ -62,6 +62,7 @@ type EpochDataMarketRequest struct {
 	EpochID           int    `json:"epoch_id"`
 	DataMarketAddress string `json:"data_market_address"`
 }
+
 type EpochDataMarketDayRequest struct {
 	Token             string `json:"token"`
 	Day               int    `json:"day"`
@@ -79,9 +80,25 @@ type BatchCount struct {
 	TotalBatches int `json:"total_batches"`
 }
 
+// Swagger-compatible struct for Request
+type RequestSwagger struct {
+	SlotID      uint64 `json:"slotID,omitempty"`
+	Deadline    uint64 `json:"deadline,omitempty"`
+	SnapshotCID string `json:"snapshotCID,omitempty"`
+	EpochID     uint64 `json:"epochID,omitempty"`
+	ProjectID   string `json:"projectID,omitempty"`
+}
+
+// Swagger-compatible struct for SnapshotSubmission
+type SnapshotSubmissionSwagger struct {
+	Request   *RequestSwagger `json:"request,omitempty"`
+	Signature string          `json:"signature,omitempty"`
+	Header    string          `json:"header,omitempty"`
+}
+
 type SubmissionDetails struct {
-	SubmissionID   string                   `json:"submission_id"`
-	SubmissionData *pkgs.SnapshotSubmission `json:"submission_data"`
+	SubmissionID   string                     `json:"submission_id"`
+	SubmissionData *SnapshotSubmissionSwagger `json:"submission_data"`
 }
 
 type EpochSubmissionSummary struct {
@@ -701,6 +718,17 @@ func handleBatchCount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleEpochSubmissionDetails godoc
+// @Summary Get epoch submission details
+// @Description Retrieves the submission count and details of all submissions for a specific epoch and data market address
+// @Tags Submissions
+// @Accept json
+// @Produce json
+// @Param request body EpochDataMarketRequest true "Epoch data market request payload"
+// @Success 200 {object} Response[EpochSubmissionSummary]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Router /epochSubmissionDetails [post]
 func handleEpochSubmissionDetails(w http.ResponseWriter, r *http.Request) {
 	var request EpochDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -767,8 +795,18 @@ func handleEpochSubmissionDetails(w http.ResponseWriter, r *http.Request) {
 
 		// Create a SubmissionDetails object
 		details := SubmissionDetails{
-			SubmissionID:   submissionID,
-			SubmissionData: &submissionData,
+			SubmissionID: submissionID,
+			SubmissionData: &SnapshotSubmissionSwagger{
+				Request: &RequestSwagger{
+					SlotID:      submissionData.Request.SlotId,
+					Deadline:    submissionData.Request.Deadline,
+					EpochID:     submissionData.Request.EpochId,
+					SnapshotCID: submissionData.Request.SnapshotCid,
+					ProjectID:   submissionData.Request.ProjectId,
+				},
+				Signature: submissionData.Signature,
+				Header:    submissionData.Header,
+			},
 		}
 
 		// Append the details to the list

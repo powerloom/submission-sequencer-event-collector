@@ -774,7 +774,7 @@ func storeDiscardedSubmissionDetails(dataMarketAddress, currentDay, epochID stri
 
 		// Store the details in the Redis hashtable
 		if err := redis.RedisClient.HSet(context.Background(), discardedKey, projectID, detailsJSON).Err(); err != nil {
-			fmt.Errorf("failed to write discarded submission details for project %s to Redis: %v", projectID, err)
+			return fmt.Errorf("failed to write discarded submission details for project %s to Redis: %v", projectID, err)
 		}
 	}
 
@@ -808,8 +808,18 @@ func refactorEpochSubmissions(eligibleSubmissions map[string]*pkgs.SnapshotSubmi
 
 	for submissionID, submission := range eligibleSubmissions {
 		epochSubmissionsList = append(epochSubmissionsList, SubmissionDetails{
-			SubmissionID:   submissionID,
-			SubmissionData: submission,
+			SubmissionID: submissionID,
+			SubmissionData: &SnapshotSubmissionSwagger{
+				Request: &RequestSwagger{
+					SlotID:      submission.Request.SlotId,
+					Deadline:    submission.Request.Deadline,
+					EpochID:     submission.Request.EpochId,
+					SnapshotCID: submission.Request.SnapshotCid,
+					ProjectID:   submission.Request.ProjectId,
+				},
+				Signature: submission.Signature,
+				Header:    submission.Header,
+			},
 		})
 	}
 
