@@ -234,7 +234,7 @@ func getDailyEligibleSubmission(dataMarketAddress string, slotID int, day *big.I
 
 func getEligibleSlotIDs(dataMarketAddress string, day *big.Int) []string {
 	// Construct the key for fetching eligible slotIDs from Redis
-	key := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, day.String())
+	key := redis.EligibleNodesByDayKey(dataMarketAddress, day.String())
 
 	// Attempt to get the set values from Redis
 	eligibleSlotIDs := redis.GetSetKeys(context.Background(), key)

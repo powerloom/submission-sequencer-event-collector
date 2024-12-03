@@ -27,6 +27,7 @@ var (
 	Client              *ethclient.Client
 	Instance            *contract.Contract
 	ContractABI         abi.ABI
+	NodeCount           *big.Int
 	epochsInADay        = 720
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
 	BufferEpochs        = 5
@@ -123,6 +124,13 @@ func LoadContractStateVariables() {
 				log.Errorf("Failed to set daily snapshot quota for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
+	}
+
+	// Fetch the total node count from contract and cache it
+	if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+		return Instance.GetTotalNodeCount(&bind.CallOpts{Context: context.Background()})
+	}); err == nil {
+		NodeCount = output
 	}
 }
 
