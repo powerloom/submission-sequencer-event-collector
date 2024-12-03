@@ -538,7 +538,6 @@ func sendRewardUpdates(dataMarketAddress, epochID string) error {
 	// Prepare data for relayer
 	slotIDs := make([]*big.Int, 0)
 	submissionsList := make([]*big.Int, 0)
-	eligibleNodes := 0
 
 	for slotID := int64(1); slotID <= NodeCount.Int64(); slotID++ {
 		// Get the eligible submission count in Redis
@@ -555,15 +554,11 @@ func sendRewardUpdates(dataMarketAddress, epochID string) error {
 			continue
 		}
 
-		if submissionCountBigInt.Int64() >= dailySnapshotQuota.Int64() {
-			eligibleNodes++
-		}
-
 		slotIDs = append(slotIDs, big.NewInt(slotID))
 		submissionsList = append(submissionsList, submissionCountBigInt)
 	}
 
-	batchArrays(dataMarketAddress, currentDay.String(), slotIDs, submissionsList, eligibleNodes)
+	batchArrays(dataMarketAddress, currentDay.String(), slotIDs, submissionsList, 0)
 
 	return nil
 }
