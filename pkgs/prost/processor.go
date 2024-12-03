@@ -528,13 +528,6 @@ func sendRewardUpdates(dataMarketAddress, epochID string) error {
 		return err
 	}
 
-	// Fetch daily snapshot quota for the specified data market address from Redis
-	dailySnapshotQuota, err := redis.GetDailySnapshotQuota(context.Background(), dataMarketAddress)
-	if err != nil {
-		log.Errorf("Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
-		return err
-	}
-
 	// Prepare data for relayer
 	slotIDs := make([]*big.Int, 0)
 	submissionsList := make([]*big.Int, 0)
