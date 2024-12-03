@@ -278,13 +278,13 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 
 	// Set eligible slotIDs for each day
 	slotIDsForDay3 := []string{"slot1", "slot2", "slot3"}
-	redis.AddToSet(context.Background(), redis.EligibleSlotSubmissionsByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "3"), slotIDsForDay3...)
+	redis.AddToSet(context.Background(), redis.EligibleNodesByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "3"), slotIDsForDay3...)
 
 	slotIDsForDay2 := []string{"slot4", "slot5", "slot6"}
-	redis.AddToSet(context.Background(), redis.EligibleSlotSubmissionsByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "2"), slotIDsForDay2...)
+	redis.AddToSet(context.Background(), redis.EligibleNodesByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "2"), slotIDsForDay2...)
 
 	slotIDsForDay1 := []string{"slot7", "slot8", "slot9"}
-	redis.AddToSet(context.Background(), redis.EligibleSlotSubmissionsByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1"), slotIDsForDay1...)
+	redis.AddToSet(context.Background(), redis.EligibleNodesByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1"), slotIDsForDay1...)
 
 	tests := []struct {
 		name       string

@@ -75,13 +75,14 @@ func arrangeSubmissionKeysInBatches(projectMap map[string][]string) []map[string
 	return batches
 }
 
-// fetchEligibleSlotIDs returns the slot IDs and their count for a given data market and day
+// fetchEligibleSlotIDs returns the slot IDs and their count for a given data market and day.
+// SlotIDs with eligible submission counts greater than equal to daily snapshot quota are stored.
 func fetchEligibleSlotIDs(dataMarketAddress, day string) (int, []string) {
-	// Build the Redis key to fetch eligible slot submissions for the specified day
-	eligibleSubmissionsSetKey := redis.EligibleSlotSubmissionsByDayKey(dataMarketAddress, day)
+	// Build the Redis key to fetch the slotIDs for the specified day
+	eligibleNodesSetKey := redis.EligibleNodesByDayKey(dataMarketAddress, day)
 
 	// Retrieve the slot IDs stored in the set associated with the Redis key
-	slotIDs := redis.GetSetKeys(context.Background(), eligibleSubmissionsSetKey)
+	slotIDs := redis.GetSetKeys(context.Background(), eligibleNodesSetKey)
 
 	// Return the slot IDs and their count
 	return len(slotIDs), slotIDs

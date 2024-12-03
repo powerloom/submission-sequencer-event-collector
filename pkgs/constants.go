@@ -28,7 +28,7 @@ const (
 	BatchSubmissionsKey              = "BatchSubmissionsKey"
 	SlotSubmissionsKey               = "SlotSubmissionsKey"
 	EligibleSlotSubmissionsKey       = "EligibleSlotSubmissionsKey"
-	EligibleSlotSubmissionByDayKey   = "EligibleSlotSubmissionByDayKey"
+	EligibleNodeByDayKey             = "EligibleNodeByDayKey"
 	LastKnownDayKey                  = "LastKnownDayKey"
 	DailySnapshotQuotaTableKey       = "DailySnapshotQuotaTableKey"
 	EpochSubmissionsCountKey         = "EpochSubmissionsCountKey"
