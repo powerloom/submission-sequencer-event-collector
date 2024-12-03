@@ -104,7 +104,7 @@ func ProcessEvents(block *types.Block) {
 				// Send updateRewards to relayer when current epoch is a multiple of epoch interval (config param)
 				if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
 					// Send periodic updateRewards to relayer throughtout the day
-					sendRewardUpdates(dataMarketAddress)
+					sendRewardUpdates(dataMarketAddress, newEpochID.String())
 				}
 
 				// Prepare the epoch marker details
@@ -520,7 +520,7 @@ func handleDayTransition(dataMarketAddress string, currentDay, epochID *big.Int)
 	return nil
 }
 
-func sendRewardUpdates(dataMarketAddress string) error {
+func sendRewardUpdates(dataMarketAddress, epochID string) error {
 	// Fetch the current day
 	currentDay, err := FetchCurrentDay(common.HexToAddress(dataMarketAddress))
 	if err != nil {
@@ -528,23 +528,42 @@ func sendRewardUpdates(dataMarketAddress string) error {
 		return err
 	}
 
+	// Fetch daily snapshot quota for the specified data market address from Redis
+	dailySnapshotQuota, err := redis.GetDailySnapshotQuota(context.Background(), dataMarketAddress)
+	if err != nil {
+		log.Errorf("Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
+		return err
+	}
+
 	// Prepare data for relayer
 	slotIDs := make([]*big.Int, 0)
 	submissionsList := make([]*big.Int, 0)
+	eligibleNodes := 0
 
 	for slotID := int64(1); slotID <= NodeCount.Int64(); slotID++ {
-		var slotSubmissionCount *big.Int
-		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
-			return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), currentDay)
-		}); err == nil {
-			slotSubmissionCount = output
+		// Get the eligible submission count in Redis
+		key := redis.EligibleSlotSubmissionKey(dataMarketAddress, big.NewInt(slotID).String(), currentDay.String())
+		slotSubmissionCount, err := redis.Get(context.Background(), key)
+		if err != nil {
+			log.Errorf("Failed to fetch eligible submission count for slotID %d, epoch %s within data market %s: %v", slotID, epochID, dataMarketAddress, err)
+			continue
+		}
+
+		submissionCountBigInt, ok := new(big.Int).SetString(slotSubmissionCount, 10)
+		if !ok {
+			log.Errorf("Failed to convert slot submission count %d to big.Int", slotID)
+			continue
+		}
+
+		if submissionCountBigInt.Int64() >= dailySnapshotQuota.Int64() {
+			eligibleNodes++
 		}
 
 		slotIDs = append(slotIDs, big.NewInt(slotID))
-		submissionsList = append(submissionsList, slotSubmissionCount)
+		submissionsList = append(submissionsList, submissionCountBigInt)
 	}
 
-	batchArrays(dataMarketAddress, currentDay.String(), slotIDs, submissionsList, 0)
+	batchArrays(dataMarketAddress, currentDay.String(), slotIDs, submissionsList, eligibleNodes)
 
 	return nil
 }
