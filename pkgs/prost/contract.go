@@ -9,6 +9,7 @@ import (
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/contract"
+	"submission-sequencer-collector/pkgs/dataMarketContract"
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
@@ -23,10 +24,13 @@ import (
 )
 
 var (
-	Client       *ethclient.Client
-	Instance     *contract.Contract
-	ContractABI  abi.ABI
-	epochsInADay = 720
+	Client              *ethclient.Client
+	Instance            *contract.Contract
+	ContractABI         abi.ABI
+	NodeCount           *big.Int
+	epochsInADay        = 720
+	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
+	BufferEpochs        = 5
 )
 
 func ConfigureClient() {
@@ -41,6 +45,11 @@ func ConfigureClient() {
 
 func ConfigureContractInstance() {
 	Instance, _ = contract.NewContract(common.HexToAddress(config.SettingsObj.ContractAddress), Client)
+
+	for _, dataMarketContractAddr := range config.SettingsObj.DataMarketContractAddresses {
+		DataMarketInstance, _ := dataMarketContract.NewDataMarketContract(dataMarketContractAddr, Client)
+		DataMarketInstances[dataMarketContractAddr.Hex()] = DataMarketInstance
+	}
 }
 
 func ConfigureABI() {
@@ -101,6 +110,27 @@ func LoadContractStateVariables() {
 				log.Errorf("Failed to set day size for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
+
+		// Fetch the daily snapshot quota for the specified data market address from contract
+		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+			return Instance.DailySnapshotQuota(&bind.CallOpts{}, dataMarketAddress)
+		}); err == nil {
+			// Convert the daily snapshot quota to a string for storage in Redis
+			dailySnapshotQuota := output.String()
+
+			// Store the daily snapshot quota in the Redis hash table
+			err := redis.RedisClient.HSet(context.Background(), redis.GetDailySnapshotQuotaTableKey(), dataMarketAddress.Hex(), dailySnapshotQuota).Err()
+			if err != nil {
+				log.Errorf("Failed to set daily snapshot quota for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
+			}
+		}
+	}
+
+	// Fetch the total node count from contract and cache it
+	if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+		return Instance.GetTotalNodeCount(&bind.CallOpts{Context: context.Background()})
+	}); err == nil {
+		NodeCount = output
 	}
 }
 
