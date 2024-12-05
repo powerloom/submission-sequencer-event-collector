@@ -46,8 +46,9 @@ type SubmissionsRequest struct {
 }
 
 type DailySubmissions struct {
-	Day         int   `json:"day"`
-	Submissions int64 `json:"submissions"`
+	Day                 int   `json:"day"`
+	EligibleSubmissions int64 `json:"eligible_submissions"`
+	TotalSubmissions    int64 `json:"total_submissions"`
 }
 
 type EligibleNodesRequest struct {
@@ -142,52 +143,6 @@ type Response[K any] struct {
 	RequestID string      `json:"request_id"`
 }
 
-// TODO: remove this
-func getDailySubmissions(dataMarketAddress string, slotID int, day *big.Int) int64 {
-	if val, err := redis.Get(context.Background(), redis.SlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())); err != nil || val == "" {
-		subs, err := prost.MustQuery[*big.Int](context.Background(), func() (*big.Int, error) {
-			subs, err := prost.Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), day)
-			return subs, err
-		})
-		if err != nil {
-			log.Errorln("Could not fetch submissions from contract: ", err.Error())
-			return 0
-		}
-
-		return subs.Int64()
-	} else {
-		submissions, _ := new(big.Int).SetString(val, 10)
-		return submissions.Int64()
-	}
-}
-
-// TODO: remove this
-func getDailyEligibleSubmissions(dataMarketAddress string, slotID int, day *big.Int) int64 {
-	// Construct the key for fetching eligible submissions from Redis
-	key := redis.EligibleSlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())
-
-	// Attempt to get the value from Redis
-	val, err := redis.Get(context.Background(), key)
-	if err != nil {
-		log.Errorf("Failed to fetch eligible submissions for key %s: %v", key, err)
-		return 0
-	}
-
-	// If the value is found, parse it as a big integer
-	if val != "" {
-		eligibleSubmissions, ok := new(big.Int).SetString(val, 10)
-		if !ok {
-			log.Errorf("Failed to parse eligible submissions for key %s: invalid integer format", key)
-			return 0
-		}
-
-		return eligibleSubmissions.Int64()
-	}
-
-	// Return 0 if no value is found in Redis
-	return 0
-}
-
 func getDailyTotalSubmission(dataMarketAddress string, slotID int, day *big.Int) int64 {
 	// Construct the key for fetching total submissions from Redis
 	key := redis.SlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())
@@ -253,9 +208,9 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 	return submissions, nil
 }
 
-// handleTotalSubmissions godoc
-// @Summary Get total submissions
-// @Description Retrieves total submission counts for a specific data market address across a specified number of past days
+// handleSubmissionsCount godoc
+// @Summary Get eligible and total submissions count
+// @Description Retrieves eligible and total submission counts for a specific data market address across a specified number of past days
 // @Tags Submissions
 // @Accept json
 // @Produce json
@@ -263,8 +218,8 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 // @Success 200 {object} Response[ResponseArray[DailySubmissions]]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, invalid slotID or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /totalSubmissions [post]
-func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
+// @Router /submissionsCount [post]
+func handleSubmissionsCount(w http.ResponseWriter, r *http.Request) {
 	var request SubmissionsRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -317,200 +272,9 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 		go func(i int) {
 			defer wg.Done()
 			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
-			subs := getDailySubmissions(request.DataMarketAddress, request.SlotID, day) // TODO: use getDailyTotalSubmission func
-			ch <- DailySubmissions{Day: int(day.Int64()), Submissions: subs}
-		}(i)
-	}
-
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-
-	for submission := range ch {
-		submissionsResponse[int(currentDay.Int64())-submission.Day] = submission
-	}
-
-	info := InfoType[ResponseArray[DailySubmissions]]{
-		Success:  true,
-		Response: submissionsResponse,
-	}
-
-	response := Response[ResponseArray[DailySubmissions]]{
-		Info:      info,
-		RequestID: r.Context().Value("request_id").(string),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-}
-
-// handleTotalEligibleSubmissions godoc
-// @Summary Get total eligible submissions
-// @Description Retrieves total eligible submission counts for a specific data market address across a specified number of past days
-// @Tags Submissions
-// @Accept json
-// @Produce json
-// @Param request body SubmissionsRequest true "Submissions request payload"
-// @Success 200 {object} Response[ResponseArray[DailySubmissions]]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, invalid slotID or invalid data market address)"
-// @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /totalEligibleSubmissions [post]
-func handleTotalEligibleSubmissions(w http.ResponseWriter, r *http.Request) {
-	var request SubmissionsRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if request.Token != config.SettingsObj.AuthReadToken {
-		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
-		return
-	}
-
-	if request.PastDays < 1 {
-		http.Error(w, "Past days should be at least 1", http.StatusBadRequest)
-		return
-	}
-
-	slotID := request.SlotID
-	if slotID < 1 || slotID > 10000 {
-		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
-		return
-	}
-
-	isValid := false
-	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		if request.DataMarketAddress == dataMarketAddress {
-			isValid = true
-			break
-		}
-	}
-
-	if !isValid {
-		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
-		return
-	}
-
-	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
-	if err != nil {
-		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
-		return
-	}
-
-	currentDay := new(big.Int).Set(day)
-	submissionsResponse := make([]DailySubmissions, request.PastDays)
-
-	var wg sync.WaitGroup
-	ch := make(chan DailySubmissions, request.PastDays)
-
-	for i := 0; i < request.PastDays; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
-			subs := getDailyEligibleSubmission(request.DataMarketAddress, request.SlotID, day)
-			ch <- DailySubmissions{Day: int(day.Int64()), Submissions: subs}
-		}(i)
-	}
-
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-
-	for submission := range ch {
-		submissionsResponse[int(currentDay.Int64())-submission.Day] = submission
-	}
-
-	info := InfoType[ResponseArray[DailySubmissions]]{
-		Success:  true,
-		Response: submissionsResponse,
-	}
-
-	response := Response[ResponseArray[DailySubmissions]]{
-		Info:      info,
-		RequestID: r.Context().Value("request_id").(string),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-}
-
-// handleEligibleSubmissions godoc
-// @Summary Get eligible submissions
-// @Description Retrieves eligible submission counts for a specific data market address across a specified number of past days
-// @Tags Submissions
-// @Accept json
-// @Produce json
-// @Param request body SubmissionsRequest true "Submissions request payload"
-// @Success 200 {object} Response[ResponseArray[DailySubmissions]]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, invalid slotID or invalid data market address)"
-// @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /eligibleSubmissions [post]
-func handleEligibleSubmissions(w http.ResponseWriter, r *http.Request) {
-	var request SubmissionsRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if request.Token != config.SettingsObj.AuthReadToken {
-		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
-		return
-	}
-
-	if request.PastDays < 1 {
-		http.Error(w, "Past days should be at least 1", http.StatusBadRequest)
-		return
-	}
-
-	slotID := request.SlotID
-	if slotID < 1 || slotID > 10000 {
-		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
-		return
-	}
-
-	isValid := false
-	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		if request.DataMarketAddress == dataMarketAddress {
-			isValid = true
-			break
-		}
-	}
-
-	if !isValid {
-		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
-		return
-	}
-
-	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
-	if err != nil {
-		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
-		return
-	}
-
-	currentDay := new(big.Int).Set(day)
-	submissionsResponse := make([]DailySubmissions, request.PastDays)
-
-	var wg sync.WaitGroup
-	ch := make(chan DailySubmissions, request.PastDays)
-
-	for i := 0; i < request.PastDays; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
-			subs := getDailyEligibleSubmissions(request.DataMarketAddress, request.SlotID, day)
-			ch <- DailySubmissions{Day: int(day.Int64()), Submissions: subs}
+			eligibleSubs := getDailyEligibleSubmission(request.DataMarketAddress, request.SlotID, day)
+			totalSubs := getDailyTotalSubmission(request.DataMarketAddress, request.SlotID, day)
+			ch <- DailySubmissions{Day: int(day.Int64()), EligibleSubmissions: eligibleSubs, TotalSubmissions: totalSubs}
 		}(i)
 	}
 
@@ -1061,9 +825,7 @@ func RequestMiddleware(next http.Handler) http.Handler {
 
 func StartApiServer() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/totalSubmissions", handleTotalSubmissions)
-	mux.HandleFunc("/totalEligibleSubmissions", handleTotalEligibleSubmissions)
-	mux.HandleFunc("/eligibleSubmissions", handleEligibleSubmissions) // TODO: remove this endpoint
+	mux.HandleFunc("/submissionsCount", handleSubmissionsCount)
 	mux.HandleFunc("/eligibleNodesCount", handleEligibleNodesCount)
 	mux.HandleFunc("/batchCount", handleBatchCount)
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)

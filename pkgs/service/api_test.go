@@ -53,115 +53,7 @@ func TestMain(m *testing.M) {
 	mr.Close()
 }
 
-func TestHandleTotalSubmissions(t *testing.T) {
-	// Set the authentication read token
-	config.SettingsObj.AuthReadToken = "valid-token"
-
-	// Set the current day
-	redis.Set(context.Background(), redis.GetCurrentDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "5")
-
-	// Set total submission count for each day
-	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "5"), "100")
-	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "4"), "80")
-	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "3"), "150")
-	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "2"), "60")
-	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "1"), "50")
-
-	tests := []struct {
-		name       string
-		body       string
-		statusCode int
-		response   []DailySubmissions
-	}{
-		{
-			name:       "Valid token, past days 1",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
-			response: []DailySubmissions{
-				{Day: 5, Submissions: 100},
-			},
-		},
-		{
-			name:       "Valid token, past days 3",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
-			response: []DailySubmissions{
-				{Day: 5, Submissions: 100},
-				{Day: 4, Submissions: 80},
-				{Day: 3, Submissions: 150},
-			},
-		},
-		{
-			name:       "Valid token, total submissions till date",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
-			response: []DailySubmissions{
-				{Day: 5, Submissions: 100},
-				{Day: 4, Submissions: 80},
-				{Day: 3, Submissions: 150},
-				{Day: 2, Submissions: 60},
-				{Day: 1, Submissions: 50},
-			},
-		},
-		{
-			name:       "Valid token, negative past days",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": -1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusBadRequest,
-			response:   nil,
-		},
-		{
-			name:       "Invalid token",
-			body:       `{"slot_id": 1, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusUnauthorized,
-			response:   nil,
-		},
-		{
-			name:       "Invalid Data Market Address",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
-			statusCode: http.StatusBadRequest,
-			response:   nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("POST", "/totalSubmissions", strings.NewReader(tt.body))
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Content-Type", "application/json")
-
-			rr := httptest.NewRecorder()
-			handler := http.HandlerFunc(handleTotalSubmissions)
-			testHandler := RequestMiddleware(handler)
-			testHandler.ServeHTTP(rr, req)
-
-			responseBody := rr.Body.String()
-			t.Log("Response Body:", responseBody)
-
-			assert.Equal(t, tt.statusCode, rr.Code)
-
-			if tt.statusCode == http.StatusOK {
-				var response struct {
-					Info struct {
-						Success  bool               `json:"success"`
-						Response []DailySubmissions `json:"response"`
-					} `json:"info"`
-					RequestID string `json:"request_id"`
-				}
-
-				err := json.NewDecoder(rr.Body).Decode(&response)
-				assert.NoError(t, err)
-
-				err = json.Unmarshal([]byte(responseBody), &response)
-				assert.NoError(t, err)
-				assert.Equal(t, tt.response, response.Info.Response)
-			}
-		})
-	}
-}
-
-func TestHandleEligibleSubmissions(t *testing.T) {
+func TestHandleSubmissionsCount(t *testing.T) {
 	// Set the authentication read token
 	config.SettingsObj.AuthReadToken = "valid-token"
 
@@ -175,6 +67,13 @@ func TestHandleEligibleSubmissions(t *testing.T) {
 	redis.Set(context.Background(), redis.EligibleSlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "2"), "50")
 	redis.Set(context.Background(), redis.EligibleSlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "1"), "30")
 
+	// Set total submission count for each day
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "5"), "120")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "4"), "200")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "3"), "150")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "2"), "100")
+	redis.Set(context.Background(), redis.SlotSubmissionKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1", "1"), "60")
+
 	tests := []struct {
 		name       string
 		body       string
@@ -186,7 +85,7 @@ func TestHandleEligibleSubmissions(t *testing.T) {
 			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
-				{Day: 5, Submissions: 80},
+				{Day: 5, EligibleSubmissions: 80, TotalSubmissions: 120},
 			},
 		},
 		{
@@ -194,21 +93,21 @@ func TestHandleEligibleSubmissions(t *testing.T) {
 			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
-				{Day: 5, Submissions: 80},
-				{Day: 4, Submissions: 60},
-				{Day: 3, Submissions: 140},
+				{Day: 5, EligibleSubmissions: 80, TotalSubmissions: 120},
+				{Day: 4, EligibleSubmissions: 60, TotalSubmissions: 200},
+				{Day: 3, EligibleSubmissions: 140, TotalSubmissions: 150},
 			},
 		},
 		{
-			name:       "Valid token, total submissions till date",
+			name:       "Valid token, all submissions till date",
 			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
-				{Day: 5, Submissions: 80},
-				{Day: 4, Submissions: 60},
-				{Day: 3, Submissions: 140},
-				{Day: 2, Submissions: 50},
-				{Day: 1, Submissions: 30},
+				{Day: 5, EligibleSubmissions: 80, TotalSubmissions: 120},
+				{Day: 4, EligibleSubmissions: 60, TotalSubmissions: 200},
+				{Day: 3, EligibleSubmissions: 140, TotalSubmissions: 150},
+				{Day: 2, EligibleSubmissions: 50, TotalSubmissions: 100},
+				{Day: 1, EligibleSubmissions: 30, TotalSubmissions: 60},
 			},
 		},
 		{
@@ -233,14 +132,14 @@ func TestHandleEligibleSubmissions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("POST", "/eligibleSubmissions", strings.NewReader(tt.body))
+			req, err := http.NewRequest("POST", "/submissionsCount", strings.NewReader(tt.body))
 			if err != nil {
 				t.Fatal(err)
 			}
 			req.Header.Set("Content-Type", "application/json")
 
 			rr := httptest.NewRecorder()
-			handler := http.HandlerFunc(handleEligibleSubmissions)
+			handler := http.HandlerFunc(handleSubmissionsCount)
 			testHandler := RequestMiddleware(handler)
 			testHandler.ServeHTTP(rr, req)
 
