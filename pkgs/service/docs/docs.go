@@ -204,52 +204,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/eligibleSubmissions": {
-            "post": {
-                "description": "Retrieves eligible submission counts for a specific data market address across a specified number of past days",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Submissions"
-                ],
-                "summary": "Get eligible submissions",
-                "parameters": [
-                    {
-                        "description": "Submissions request payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/service.SubmissionsRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/service.Response-service_ResponseArray-service_DailySubmissions"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1, invalid slotID or invalid data market address)",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized: Incorrect token",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/epochSubmissionDetails": {
             "post": {
                 "description": "Retrieves the submission count and details of all submissions for a specific epoch and data market address",
@@ -296,9 +250,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/totalEligibleSubmissions": {
+        "/submissionsCount": {
             "post": {
-                "description": "Retrieves total eligible submission counts for a specific data market address across a specified number of past days",
+                "description": "Retrieves eligible and total submission counts for a specific data market address across a specified number of past days",
                 "consumes": [
                     "application/json"
                 ],
@@ -308,53 +262,7 @@ const docTemplate = `{
                 "tags": [
                     "Submissions"
                 ],
-                "summary": "Get total eligible submissions",
-                "parameters": [
-                    {
-                        "description": "Submissions request payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/service.SubmissionsRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/service.Response-service_ResponseArray-service_DailySubmissions"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1, invalid slotID or invalid data market address)",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized: Incorrect token",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/totalSubmissions": {
-            "post": {
-                "description": "Retrieves total submission counts for a specific data market address across a specified number of past days",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Submissions"
-                ],
-                "summary": "Get total submissions",
+                "summary": "Get eligible and total submissions count",
                 "parameters": [
                     {
                         "description": "Submissions request payload",
@@ -404,7 +312,10 @@ const docTemplate = `{
                 "day": {
                     "type": "integer"
                 },
-                "submissions": {
+                "eligible_submissions": {
+                    "type": "integer"
+                },
+                "total_submissions": {
                     "type": "integer"
                 }
             }

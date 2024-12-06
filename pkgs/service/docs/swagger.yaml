@@ -9,7 +9,9 @@ definitions:
     properties:
       day:
         type: integer
-      submissions:
+      eligible_submissions:
+        type: integer
+      total_submissions:
         type: integer
     type: object
   service.DiscardedSubmissionDetails:
@@ -372,38 +374,6 @@ paths:
       summary: Get the submission counts of all eligible slotIDs
       tags:
       - Eligible Submission Count
-  /eligibleSubmissions:
-    post:
-      consumes:
-      - application/json
-      description: Retrieves eligible submission counts for a specific data market
-        address across a specified number of past days
-      parameters:
-      - description: Submissions request payload
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/service.SubmissionsRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/service.Response-service_ResponseArray-service_DailySubmissions'
-        "400":
-          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
-            invalid slotID or invalid data market address)'
-          schema:
-            type: string
-        "401":
-          description: 'Unauthorized: Incorrect token'
-          schema:
-            type: string
-      summary: Get eligible submissions
-      tags:
-      - Submissions
   /epochSubmissionDetails:
     post:
       consumes:
@@ -436,11 +406,11 @@ paths:
       summary: Get epoch submission details
       tags:
       - Submissions
-  /totalEligibleSubmissions:
+  /submissionsCount:
     post:
       consumes:
       - application/json
-      description: Retrieves total eligible submission counts for a specific data
+      description: Retrieves eligible and total submission counts for a specific data
         market address across a specified number of past days
       parameters:
       - description: Submissions request payload
@@ -465,39 +435,7 @@ paths:
           description: 'Unauthorized: Incorrect token'
           schema:
             type: string
-      summary: Get total eligible submissions
-      tags:
-      - Submissions
-  /totalSubmissions:
-    post:
-      consumes:
-      - application/json
-      description: Retrieves total submission counts for a specific data market address
-        across a specified number of past days
-      parameters:
-      - description: Submissions request payload
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/service.SubmissionsRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/service.Response-service_ResponseArray-service_DailySubmissions'
-        "400":
-          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
-            invalid slotID or invalid data market address)'
-          schema:
-            type: string
-        "401":
-          description: 'Unauthorized: Incorrect token'
-          schema:
-            type: string
-      summary: Get total submissions
+      summary: Get eligible and total submissions count
       tags:
       - Submissions
 swagger: "2.0"
