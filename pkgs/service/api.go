@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/gorilla/handlers"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -35,7 +36,8 @@ import (
 // @contact.url http://www.yoursupport.com
 // @contact.email support@example.com
 
-// @host localhost:8080
+// @host devnet-sequencer-collector.aws2.powerloom.io
+// @schemes https
 // @BasePath /
 
 type SubmissionsRequest struct {
@@ -208,7 +210,7 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 	return submissions, nil
 }
 
-// handleSubmissionsCount godoc
+// handleTotalSubmissions godoc
 // @Summary Get eligible and total submissions count
 // @Description Retrieves eligible and total submission counts for a specific data market address across a specified number of past days
 // @Tags Submissions
@@ -832,7 +834,14 @@ func StartApiServer() {
 	mux.HandleFunc("/eligibleSlotSubmissionCount", handleEligibleSlotSubmissionCount)
 	mux.HandleFunc("/discardedSubmissions", handleDiscardedSubmissions)
 
-	handler := RequestMiddleware(mux)
+	// Enable CORS with specific settings
+	corsHandler := handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}), // Allow all origins or specify your frontend URL
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Request-ID"}),
+	)(mux)
+
+	handler := RequestMiddleware(corsHandler)
 
 	// Serve Swagger UI with the middleware
 	swaggerHandler := httpSwagger.Handler(

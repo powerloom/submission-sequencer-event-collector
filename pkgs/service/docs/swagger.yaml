@@ -2,16 +2,16 @@ basePath: /
 definitions:
   service.BatchCount:
     properties:
-      total_batches:
+      totalBatches:
         type: integer
     type: object
   service.DailySubmissions:
     properties:
       day:
         type: integer
-      eligible_submissions:
+      eligibleSubmissions:
         type: integer
-      total_submissions:
+      totalSubmissions:
         type: integer
     type: object
   service.DiscardedSubmissionDetails:
@@ -45,20 +45,20 @@ definitions:
     properties:
       day:
         type: integer
-      eligible_nodes_count:
+      eligibleNodesCount:
         type: integer
-      slot_ids:
+      slotIDs:
         items:
           type: string
         type: array
     type: object
   service.EligibleNodesRequest:
     properties:
-      data_market_address:
+      dataMarketAddress:
         type: string
-      epoch_id:
+      epochID:
         type: integer
-      past_days:
+      pastDays:
         type: integer
       token:
         type: string
@@ -67,39 +67,39 @@ definitions:
     properties:
       count:
         type: integer
-      slot_id:
+      slotID:
         type: integer
     type: object
   service.EligibleSubmissionCountsResponse:
     properties:
-      eligible_submission_counts:
+      eligibleSubmissionCounts:
         items:
           $ref: '#/definitions/service.EligibleSubmissionCounts'
         type: array
     type: object
   service.EpochDataMarketDayRequest:
     properties:
-      data_market_address:
+      dataMarketAddress:
         type: string
       day:
         type: integer
-      epoch_id:
+      epochID:
         type: integer
       token:
         type: string
     type: object
   service.EpochDataMarketRequest:
     properties:
-      data_market_address:
+      dataMarketAddress:
         type: string
-      epoch_id:
+      epochID:
         type: integer
       token:
         type: string
     type: object
   service.EpochSubmissionSummary:
     properties:
-      epoch_submission_count:
+      epochSubmissionCount:
         type: integer
       submissions:
         items:
@@ -169,42 +169,42 @@ definitions:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_BatchCount'
-      request_id:
+      requestID:
         type: string
     type: object
   service.Response-service_DiscardedSubmissionsAPIResponse:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse'
-      request_id:
+      requestID:
         type: string
     type: object
   service.Response-service_EligibleSubmissionCountsResponse:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_EligibleSubmissionCountsResponse'
-      request_id:
+      requestID:
         type: string
     type: object
   service.Response-service_EpochSubmissionSummary:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_EpochSubmissionSummary'
-      request_id:
+      requestID:
         type: string
     type: object
   service.Response-service_ResponseArray-service_DailySubmissions:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_ResponseArray-service_DailySubmissions'
-      request_id:
+      requestID:
         type: string
     type: object
   service.Response-service_ResponseArray-service_EligibleNodes:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_ResponseArray-service_EligibleNodes'
-      request_id:
+      requestID:
         type: string
     type: object
   service.SnapshotSubmissionSwagger:
@@ -218,23 +218,23 @@ definitions:
     type: object
   service.SubmissionDetails:
     properties:
-      submission_data:
+      submissionData:
         $ref: '#/definitions/service.SnapshotSubmissionSwagger'
-      submission_id:
+      submissionID:
         type: string
     type: object
   service.SubmissionsRequest:
     properties:
-      data_market_address:
+      dataMarketAddress:
         type: string
-      past_days:
+      pastDays:
         type: integer
-      slot_id:
+      slotID:
         type: integer
       token:
         type: string
     type: object
-host: localhost:8080
+host: devnet-sequencer-collector.aws2.powerloom.io
 info:
   contact:
     email: support@example.com
@@ -406,7 +406,7 @@ paths:
       summary: Get epoch submission details
       tags:
       - Submissions
-  /submissionsCount:
+  /totalSubmissions:
     post:
       consumes:
       - application/json
@@ -438,4 +438,6 @@ paths:
       summary: Get eligible and total submissions count
       tags:
       - Submissions
+schemes:
+- https
 swagger: "2.0"
