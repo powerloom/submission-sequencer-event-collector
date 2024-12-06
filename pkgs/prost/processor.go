@@ -367,8 +367,11 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					break
 				}
 
+				// Calculate the difference between currentDay and dayToCheck
+				dayDifference := new(big.Int).Sub(currentDay, dayToCheck)
+
 				// Skip cached count and recalculation when the day has rolled over and epochID is within the buffer range
-				if dayToCheck.Cmp(currentDay) != 0 && int(epochID.Int64())%epochsInADay <= BufferEpochs {
+				if dayDifference.Int64() == 1 && int(epochID.Int64())%epochsInADay <= BufferEpochs {
 					log.Infof("Skipping cached count and recalculation for data market %s on day %s due to epochID %s being in buffer range", dataMarketAddress, dayToCheck.String(), epochID.String())
 					break
 				}
