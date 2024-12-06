@@ -322,8 +322,8 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		return err
 	}
 
-	// Send eligible nodes count and slotIDs only if the current epoch is a multiple of epoch interval (config param)
 	if epochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
+		// Send eligible nodes count to the relayer if the periodic eligible count alerts are set to true
 		if config.SettingsObj.PeriodicEligibleCountAlerts {
 			// Fetch the slotIDs whose eligible submissions are recorded for the current day
 			eligibleNodesByDayKeys := redis.EligibleNodesByDayKey(dataMarketAddress, currentDay.String())
@@ -337,6 +337,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 			log.Info(alertMsg)
 		}
 
+		// Send the updateRewards request to the relayer, including the count of eligible nodes for the specified buffer days period
 		for day := 1; day <= int(math.Min(float64(config.SettingsObj.PastDaysBuffer), float64(currentDay.Int64()))); day++ {
 			// Calculate the day to check
 			dayToCheck := new(big.Int).Sub(currentDay, big.NewInt(int64(day)))
