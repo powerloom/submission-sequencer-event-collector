@@ -374,7 +374,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					return err
 				}
 
-				if cachedCount > 0 && dayToCheck != currentDay {
+				if cachedCount > 0 {
 					log.Infof("Cached eligible node count found for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), cachedCount)
 
 					// Attempt to update using cached value
