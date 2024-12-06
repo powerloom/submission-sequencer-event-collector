@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 	mr.Close()
 }
 
-func TestHandleSubmissionsCount(t *testing.T) {
+func TestHandleTotalSubmissions(t *testing.T) {
 	// Set the authentication read token
 	config.SettingsObj.AuthReadToken = "valid-token"
 
@@ -82,7 +82,7 @@ func TestHandleSubmissionsCount(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, past days 1",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
 				{Day: 5, EligibleSubmissions: 80, TotalSubmissions: 120},
@@ -90,7 +90,7 @@ func TestHandleSubmissionsCount(t *testing.T) {
 		},
 		{
 			name:       "Valid token, past days 3",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": 3, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
 				{Day: 5, EligibleSubmissions: 80, TotalSubmissions: 120},
@@ -100,7 +100,7 @@ func TestHandleSubmissionsCount(t *testing.T) {
 		},
 		{
 			name:       "Valid token, all submissions till date",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []DailySubmissions{
 				{Day: 5, EligibleSubmissions: 80, TotalSubmissions: 120},
@@ -112,19 +112,19 @@ func TestHandleSubmissionsCount(t *testing.T) {
 		},
 		{
 			name:       "Valid token, negative past days",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": -1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": -1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"slot_id": 1, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"slotID": 1, "token": "invalid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   nil,
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"slot_id": 1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
@@ -132,14 +132,14 @@ func TestHandleSubmissionsCount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("POST", "/submissionsCount", strings.NewReader(tt.body))
+			req, err := http.NewRequest("POST", "/totalSubmissions", strings.NewReader(tt.body))
 			if err != nil {
 				t.Fatal(err)
 			}
 			req.Header.Set("Content-Type", "application/json")
 
 			rr := httptest.NewRecorder()
-			handler := http.HandlerFunc(handleSubmissionsCount)
+			handler := http.HandlerFunc(handleTotalSubmissions)
 			testHandler := RequestMiddleware(handler)
 			testHandler.ServeHTTP(rr, req)
 
@@ -154,7 +154,7 @@ func TestHandleSubmissionsCount(t *testing.T) {
 						Success  bool               `json:"success"`
 						Response []DailySubmissions `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -193,7 +193,7 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, past days 1",
-			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 100, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []EligibleNodes{
 				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
@@ -201,7 +201,7 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 		},
 		{
 			name:       "Valid token, past days 3",
-			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": 3, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 100, "token": "valid-token", "pastDays": 3, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: []EligibleNodes{
 				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
@@ -211,25 +211,25 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 		},
 		{
 			name:       "Valid token, negative past days",
-			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": -1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 100, "token": "valid-token", "pastDays": -1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"epoch_id": 100, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 100, "token": "invalid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   nil,
 		},
 		{
 			name:       "Invalid EpochID",
-			body:       `{"epoch_id": -1, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": -1, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"epoch_id": 100, "token": "valid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"epochID": 100, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
@@ -259,7 +259,7 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 						Success  bool            `json:"success"`
 						Response []EligibleNodes `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -288,7 +288,7 @@ func TestHandleBatchCount(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, batch count fetched",
-			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: BatchCount{
 				TotalBatches: 10,
@@ -296,19 +296,19 @@ func TestHandleBatchCount(t *testing.T) {
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"epoch_id": 123, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "invalid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   BatchCount{},
 		},
 		{
 			name:       "Invalid EpochID",
-			body:       `{"epoch_id": -1, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": -1, "token": "valid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   BatchCount{},
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   BatchCount{},
 		},
@@ -338,7 +338,7 @@ func TestHandleBatchCount(t *testing.T) {
 						Success  bool       `json:"success"`
 						Response BatchCount `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -385,7 +385,7 @@ func TestHandleEpochSubmissionDetails(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, epoch submission details fetched",
-			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: EpochSubmissionSummary{
 				SubmissionCount: 10,
@@ -394,19 +394,19 @@ func TestHandleEpochSubmissionDetails(t *testing.T) {
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"epoch_id": 123, "token": "invalid-token", "past_days": 1, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "invalid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   EpochSubmissionSummary{},
 		},
 		{
 			name:       "Invalid EpochID",
-			body:       `{"epoch_id": -1, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": -1, "token": "valid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   EpochSubmissionSummary{},
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"epoch_id": 123, "token": "valid-token", "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   EpochSubmissionSummary{},
 		},
@@ -436,7 +436,7 @@ func TestHandleEpochSubmissionDetails(t *testing.T) {
 						Success  bool                   `json:"success"`
 						Response EpochSubmissionSummary `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -484,7 +484,7 @@ func TestHandleEligibleSubmissionCount(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, epoch submission details fetched",
-			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: EligibleSubmissionCountsResponse{
 				SlotCounts: eligibleSlotSubmissions,
@@ -492,19 +492,19 @@ func TestHandleEligibleSubmissionCount(t *testing.T) {
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"epoch_id": 123, "token": "invalid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "invalid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   EligibleSubmissionCountsResponse{},
 		},
 		{
 			name:       "Invalid EpochID",
-			body:       `{"epoch_id": -1, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": -1, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   EligibleSubmissionCountsResponse{},
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   EligibleSubmissionCountsResponse{},
 		},
@@ -534,7 +534,7 @@ func TestHandleEligibleSubmissionCount(t *testing.T) {
 						Success  bool                             `json:"success"`
 						Response EligibleSubmissionCountsResponse `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -588,7 +588,7 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 	}{
 		{
 			name:       "Valid token, epoch submission details fetched",
-			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusOK,
 			response: DiscardedSubmissionsAPIResponse{
 				Projects: []DiscardedSubmissionDetailsResponse{
@@ -600,44 +600,39 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"epoch_id": 123, "token": "invalid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": 123, "token": "invalid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   DiscardedSubmissionsAPIResponse{},
 		},
 		{
 			name:       "Invalid EpochID",
-			body:       `{"epoch_id": -1, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"epochID": -1, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   DiscardedSubmissionsAPIResponse{},
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"epoch_id": 123, "token": "valid-token", "day": 5, "data_market_address": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"epochID": 123, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   DiscardedSubmissionsAPIResponse{},
 		},
 	}
 
-	// Helper function to send HTTP request and return the response
-	sendRequest := func(body string) (*httptest.ResponseRecorder, error) {
-		req, err := http.NewRequest("POST", "/discardedSubmissions", strings.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(handleDiscardedSubmissions)
-		RequestMiddleware(handler).ServeHTTP(rr, req)
-		return rr, nil
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Send the request
-			rr, err := sendRequest(tt.body)
+			req, err := http.NewRequest("POST", "/discardedSubmissions", strings.NewReader(tt.body))
 			if err != nil {
 				t.Fatal(err)
 			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleDiscardedSubmissions)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
 
 			// Assert the status code
 			assert.Equal(t, tt.statusCode, rr.Code)
@@ -649,7 +644,7 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 						Success  bool                            `json:"success"`
 						Response DiscardedSubmissionsAPIResponse `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 				err := json.NewDecoder(rr.Body).Decode(&response)
 				assert.NoError(t, err)

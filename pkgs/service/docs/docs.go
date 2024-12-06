@@ -250,7 +250,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/submissionsCount": {
+        "/totalSubmissions": {
             "post": {
                 "description": "Retrieves eligible and total submission counts for a specific data market address across a specified number of past days",
                 "consumes": [
@@ -301,7 +301,7 @@ const docTemplate = `{
         "service.BatchCount": {
             "type": "object",
             "properties": {
-                "total_batches": {
+                "totalBatches": {
                     "type": "integer"
                 }
             }
@@ -312,10 +312,10 @@ const docTemplate = `{
                 "day": {
                     "type": "integer"
                 },
-                "eligible_submissions": {
+                "eligibleSubmissions": {
                     "type": "integer"
                 },
-                "total_submissions": {
+                "totalSubmissions": {
                     "type": "integer"
                 }
             }
@@ -368,10 +368,10 @@ const docTemplate = `{
                 "day": {
                     "type": "integer"
                 },
-                "eligible_nodes_count": {
+                "eligibleNodesCount": {
                     "type": "integer"
                 },
-                "slot_ids": {
+                "slotIDs": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -382,13 +382,13 @@ const docTemplate = `{
         "service.EligibleNodesRequest": {
             "type": "object",
             "properties": {
-                "data_market_address": {
+                "dataMarketAddress": {
                     "type": "string"
                 },
-                "epoch_id": {
+                "epochID": {
                     "type": "integer"
                 },
-                "past_days": {
+                "pastDays": {
                     "type": "integer"
                 },
                 "token": {
@@ -402,7 +402,7 @@ const docTemplate = `{
                 "count": {
                     "type": "integer"
                 },
-                "slot_id": {
+                "slotID": {
                     "type": "integer"
                 }
             }
@@ -410,7 +410,7 @@ const docTemplate = `{
         "service.EligibleSubmissionCountsResponse": {
             "type": "object",
             "properties": {
-                "eligible_submission_counts": {
+                "eligibleSubmissionCounts": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/service.EligibleSubmissionCounts"
@@ -421,13 +421,13 @@ const docTemplate = `{
         "service.EpochDataMarketDayRequest": {
             "type": "object",
             "properties": {
-                "data_market_address": {
+                "dataMarketAddress": {
                     "type": "string"
                 },
                 "day": {
                     "type": "integer"
                 },
-                "epoch_id": {
+                "epochID": {
                     "type": "integer"
                 },
                 "token": {
@@ -438,10 +438,10 @@ const docTemplate = `{
         "service.EpochDataMarketRequest": {
             "type": "object",
             "properties": {
-                "data_market_address": {
+                "dataMarketAddress": {
                     "type": "string"
                 },
-                "epoch_id": {
+                "epochID": {
                     "type": "integer"
                 },
                 "token": {
@@ -452,7 +452,7 @@ const docTemplate = `{
         "service.EpochSubmissionSummary": {
             "type": "object",
             "properties": {
-                "epoch_submission_count": {
+                "epochSubmissionCount": {
                     "type": "integer"
                 },
                 "submissions": {
@@ -561,7 +561,7 @@ const docTemplate = `{
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_BatchCount"
                 },
-                "request_id": {
+                "requestID": {
                     "type": "string"
                 }
             }
@@ -572,7 +572,7 @@ const docTemplate = `{
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse"
                 },
-                "request_id": {
+                "requestID": {
                     "type": "string"
                 }
             }
@@ -583,7 +583,7 @@ const docTemplate = `{
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_EligibleSubmissionCountsResponse"
                 },
-                "request_id": {
+                "requestID": {
                     "type": "string"
                 }
             }
@@ -594,7 +594,7 @@ const docTemplate = `{
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_EpochSubmissionSummary"
                 },
-                "request_id": {
+                "requestID": {
                     "type": "string"
                 }
             }
@@ -605,7 +605,7 @@ const docTemplate = `{
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_ResponseArray-service_DailySubmissions"
                 },
-                "request_id": {
+                "requestID": {
                     "type": "string"
                 }
             }
@@ -616,7 +616,7 @@ const docTemplate = `{
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_ResponseArray-service_EligibleNodes"
                 },
-                "request_id": {
+                "requestID": {
                     "type": "string"
                 }
             }
@@ -638,10 +638,10 @@ const docTemplate = `{
         "service.SubmissionDetails": {
             "type": "object",
             "properties": {
-                "submission_data": {
+                "submissionData": {
                     "$ref": "#/definitions/service.SnapshotSubmissionSwagger"
                 },
-                "submission_id": {
+                "submissionID": {
                     "type": "string"
                 }
             }
@@ -649,13 +649,13 @@ const docTemplate = `{
         "service.SubmissionsRequest": {
             "type": "object",
             "properties": {
-                "data_market_address": {
+                "dataMarketAddress": {
                     "type": "string"
                 },
-                "past_days": {
+                "pastDays": {
                     "type": "integer"
                 },
-                "slot_id": {
+                "slotID": {
                     "type": "integer"
                 },
                 "token": {
@@ -669,9 +669,9 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "devnet-sequencer-collector.aws2.powerloom.io",
 	BasePath:         "/",
-	Schemes:          []string{},
+	Schemes:          []string{"https"},
 	Title:            "My API Documentation",
 	Description:      "This API handles submissions and provides Swagger documentation",
 	InfoInstanceName: "swagger",

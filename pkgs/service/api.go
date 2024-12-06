@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/gorilla/handlers"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -35,50 +36,51 @@ import (
 // @contact.url http://www.yoursupport.com
 // @contact.email support@example.com
 
-// @host localhost:8080
+// @host devnet-sequencer-collector.aws2.powerloom.io
+// @schemes https
 // @BasePath /
 
 type SubmissionsRequest struct {
 	Token             string `json:"token"`
-	SlotID            int    `json:"slot_id"`
-	PastDays          int    `json:"past_days"`
-	DataMarketAddress string `json:"data_market_address"`
+	SlotID            int    `json:"slotID"`
+	PastDays          int    `json:"pastDays"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type DailySubmissions struct {
 	Day                 int   `json:"day"`
-	EligibleSubmissions int64 `json:"eligible_submissions"`
-	TotalSubmissions    int64 `json:"total_submissions"`
+	EligibleSubmissions int64 `json:"eligibleSubmissions"`
+	TotalSubmissions    int64 `json:"totalSubmissions"`
 }
 
 type EligibleNodesRequest struct {
 	Token             string `json:"token"`
-	EpochID           int    `json:"epoch_id"`
-	PastDays          int    `json:"past_days"`
-	DataMarketAddress string `json:"data_market_address"`
+	EpochID           int    `json:"epochID"`
+	PastDays          int    `json:"pastDays"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type EpochDataMarketRequest struct {
 	Token             string `json:"token"`
-	EpochID           int    `json:"epoch_id"`
-	DataMarketAddress string `json:"data_market_address"`
+	EpochID           int    `json:"epochID"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type EpochDataMarketDayRequest struct {
 	Token             string `json:"token"`
 	Day               int    `json:"day"`
-	EpochID           int    `json:"epoch_id"`
-	DataMarketAddress string `json:"data_market_address"`
+	EpochID           int    `json:"epochID"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type EligibleNodes struct {
 	Day     int      `json:"day"`
-	Count   int      `json:"eligible_nodes_count"`
-	SlotIDs []string `json:"slot_ids"`
+	Count   int      `json:"eligibleNodesCount"`
+	SlotIDs []string `json:"slotIDs"`
 }
 
 type BatchCount struct {
-	TotalBatches int `json:"total_batches"`
+	TotalBatches int `json:"totalBatches"`
 }
 
 // Swagger-compatible struct for Request
@@ -98,22 +100,22 @@ type SnapshotSubmissionSwagger struct {
 }
 
 type SubmissionDetails struct {
-	SubmissionID   string                     `json:"submission_id"`
-	SubmissionData *SnapshotSubmissionSwagger `json:"submission_data"`
+	SubmissionID   string                     `json:"submissionID"`
+	SubmissionData *SnapshotSubmissionSwagger `json:"submissionData"`
 }
 
 type EpochSubmissionSummary struct {
-	SubmissionCount int                 `json:"epoch_submission_count"`
+	SubmissionCount int                 `json:"epochSubmissionCount"`
 	Submissions     []SubmissionDetails `json:"submissions"`
 }
 
 type EligibleSubmissionCounts struct {
-	SlotID int `json:"slot_id"`
+	SlotID int `json:"slotID"`
 	Count  int `json:"count"`
 }
 
 type EligibleSubmissionCountsResponse struct {
-	SlotCounts []EligibleSubmissionCounts `json:"eligible_submission_counts"`
+	SlotCounts []EligibleSubmissionCounts `json:"eligibleSubmissionCounts"`
 }
 
 type DiscardedSubmissionDetails struct {
@@ -140,7 +142,7 @@ type ResponseArray[K any] []K
 
 type Response[K any] struct {
 	Info      InfoType[K] `json:"info"`
-	RequestID string      `json:"request_id"`
+	RequestID string      `json:"requestID"`
 }
 
 func getDailyTotalSubmission(dataMarketAddress string, slotID int, day *big.Int) int64 {
@@ -208,7 +210,7 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 	return submissions, nil
 }
 
-// handleSubmissionsCount godoc
+// handleTotalSubmissions godoc
 // @Summary Get eligible and total submissions count
 // @Description Retrieves eligible and total submission counts for a specific data market address across a specified number of past days
 // @Tags Submissions
@@ -218,8 +220,8 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 // @Success 200 {object} Response[ResponseArray[DailySubmissions]]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, invalid slotID or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /submissionsCount [post]
-func handleSubmissionsCount(w http.ResponseWriter, r *http.Request) {
+// @Router /totalSubmissions [post]
+func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 	var request SubmissionsRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -825,14 +827,21 @@ func RequestMiddleware(next http.Handler) http.Handler {
 
 func StartApiServer() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/submissionsCount", handleSubmissionsCount)
+	mux.HandleFunc("/totalSubmissions", handleTotalSubmissions)
 	mux.HandleFunc("/eligibleNodesCount", handleEligibleNodesCount)
 	mux.HandleFunc("/batchCount", handleBatchCount)
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
 	mux.HandleFunc("/eligibleSlotSubmissionCount", handleEligibleSlotSubmissionCount)
 	mux.HandleFunc("/discardedSubmissions", handleDiscardedSubmissions)
 
-	handler := RequestMiddleware(mux)
+	// Enable CORS with specific settings
+	corsHandler := handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}), // Allow all origins or specify your frontend URL
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Request-ID"}),
+	)(mux)
+
+	handler := RequestMiddleware(corsHandler)
 
 	// Serve Swagger UI with the middleware
 	swaggerHandler := httpSwagger.Handler(
