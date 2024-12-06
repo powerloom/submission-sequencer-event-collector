@@ -366,6 +366,12 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					break
 				}
 
+				// Skip cached count and recalculation when the day has rolled over and epochID is within the buffer range
+				if dayToCheck.Cmp(currentDay) != 0 && int(epochID.Int64())%epochsInADay <= BufferEpochs {
+					log.Infof("Skipping cached count and recalculation for data market %s on day %s due to epochID %s being in buffer range", dataMarketAddress, dayToCheck.String(), epochID.String())
+					break
+				}
+
 				cachedCount, err := redis.GetSetCardinality(context.Background(), redis.EligibleNodesByDayKey(dataMarketAddress, dayToCheck.String()))
 				if err != nil {
 					errorMsg := fmt.Sprintf("❌ Error fetching cached eligible node count for data market %s on day %s: %v", dataMarketAddress, dayToCheck.String(), err)
