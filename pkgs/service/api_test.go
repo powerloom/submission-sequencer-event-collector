@@ -259,7 +259,7 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 						Success  bool            `json:"success"`
 						Response []EligibleNodes `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -338,7 +338,7 @@ func TestHandleBatchCount(t *testing.T) {
 						Success  bool       `json:"success"`
 						Response BatchCount `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -436,7 +436,7 @@ func TestHandleEpochSubmissionDetails(t *testing.T) {
 						Success  bool                   `json:"success"`
 						Response EpochSubmissionSummary `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -534,7 +534,7 @@ func TestHandleEligibleSubmissionCount(t *testing.T) {
 						Success  bool                             `json:"success"`
 						Response EligibleSubmissionCountsResponse `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 
 				err := json.NewDecoder(rr.Body).Decode(&response)
@@ -618,26 +618,21 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 		},
 	}
 
-	// Helper function to send HTTP request and return the response
-	sendRequest := func(body string) (*httptest.ResponseRecorder, error) {
-		req, err := http.NewRequest("POST", "/discardedSubmissions", strings.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(handleDiscardedSubmissions)
-		RequestMiddleware(handler).ServeHTTP(rr, req)
-		return rr, nil
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Send the request
-			rr, err := sendRequest(tt.body)
+			req, err := http.NewRequest("POST", "/discardedSubmissions", strings.NewReader(tt.body))
 			if err != nil {
 				t.Fatal(err)
 			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleDiscardedSubmissions)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
 
 			// Assert the status code
 			assert.Equal(t, tt.statusCode, rr.Code)
@@ -649,7 +644,7 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 						Success  bool                            `json:"success"`
 						Response DiscardedSubmissionsAPIResponse `json:"response"`
 					} `json:"info"`
-					RequestID string `json:"request_id"`
+					RequestID string `json:"requestID"`
 				}
 				err := json.NewDecoder(rr.Body).Decode(&response)
 				assert.NoError(t, err)
