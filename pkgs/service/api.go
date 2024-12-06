@@ -40,45 +40,45 @@ import (
 
 type SubmissionsRequest struct {
 	Token             string `json:"token"`
-	SlotID            int    `json:"slot_id"`
-	PastDays          int    `json:"past_days"`
-	DataMarketAddress string `json:"data_market_address"`
+	SlotID            int    `json:"slotID"`
+	PastDays          int    `json:"pastDays"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type DailySubmissions struct {
 	Day                 int   `json:"day"`
-	EligibleSubmissions int64 `json:"eligible_submissions"`
-	TotalSubmissions    int64 `json:"total_submissions"`
+	EligibleSubmissions int64 `json:"eligibleSubmissions"`
+	TotalSubmissions    int64 `json:"totalSubmissions"`
 }
 
 type EligibleNodesRequest struct {
 	Token             string `json:"token"`
-	EpochID           int    `json:"epoch_id"`
-	PastDays          int    `json:"past_days"`
-	DataMarketAddress string `json:"data_market_address"`
+	EpochID           int    `json:"epochID"`
+	PastDays          int    `json:"pastDays"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type EpochDataMarketRequest struct {
 	Token             string `json:"token"`
-	EpochID           int    `json:"epoch_id"`
-	DataMarketAddress string `json:"data_market_address"`
+	EpochID           int    `json:"epochID"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type EpochDataMarketDayRequest struct {
 	Token             string `json:"token"`
 	Day               int    `json:"day"`
-	EpochID           int    `json:"epoch_id"`
-	DataMarketAddress string `json:"data_market_address"`
+	EpochID           int    `json:"epochID"`
+	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
 type EligibleNodes struct {
 	Day     int      `json:"day"`
-	Count   int      `json:"eligible_nodes_count"`
-	SlotIDs []string `json:"slot_ids"`
+	Count   int      `json:"eligibleNodesCount"`
+	SlotIDs []string `json:"slotIDs"`
 }
 
 type BatchCount struct {
-	TotalBatches int `json:"total_batches"`
+	TotalBatches int `json:"totalBatches"`
 }
 
 // Swagger-compatible struct for Request
@@ -98,22 +98,22 @@ type SnapshotSubmissionSwagger struct {
 }
 
 type SubmissionDetails struct {
-	SubmissionID   string                     `json:"submission_id"`
-	SubmissionData *SnapshotSubmissionSwagger `json:"submission_data"`
+	SubmissionID   string                     `json:"submissionID"`
+	SubmissionData *SnapshotSubmissionSwagger `json:"submissionData"`
 }
 
 type EpochSubmissionSummary struct {
-	SubmissionCount int                 `json:"epoch_submission_count"`
+	SubmissionCount int                 `json:"epochSubmissionCount"`
 	Submissions     []SubmissionDetails `json:"submissions"`
 }
 
 type EligibleSubmissionCounts struct {
-	SlotID int `json:"slot_id"`
+	SlotID int `json:"slotID"`
 	Count  int `json:"count"`
 }
 
 type EligibleSubmissionCountsResponse struct {
-	SlotCounts []EligibleSubmissionCounts `json:"eligible_submission_counts"`
+	SlotCounts []EligibleSubmissionCounts `json:"eligibleSubmissionCounts"`
 }
 
 type DiscardedSubmissionDetails struct {
@@ -140,7 +140,7 @@ type ResponseArray[K any] []K
 
 type Response[K any] struct {
 	Info      InfoType[K] `json:"info"`
-	RequestID string      `json:"request_id"`
+	RequestID string      `json:"requestID"`
 }
 
 func getDailyTotalSubmission(dataMarketAddress string, slotID int, day *big.Int) int64 {
@@ -218,8 +218,8 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 // @Success 200 {object} Response[ResponseArray[DailySubmissions]]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, invalid slotID or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /submissionsCount [post]
-func handleSubmissionsCount(w http.ResponseWriter, r *http.Request) {
+// @Router /totalSubmissions [post]
+func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 	var request SubmissionsRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -825,7 +825,7 @@ func RequestMiddleware(next http.Handler) http.Handler {
 
 func StartApiServer() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/submissionsCount", handleSubmissionsCount)
+	mux.HandleFunc("/totalSubmissions", handleTotalSubmissions)
 	mux.HandleFunc("/eligibleNodesCount", handleEligibleNodesCount)
 	mux.HandleFunc("/batchCount", handleBatchCount)
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
