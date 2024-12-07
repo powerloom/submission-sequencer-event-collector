@@ -554,14 +554,18 @@ func sendRewardUpdates(dataMarketAddress, epochID string) error {
 			continue
 		}
 
-		submissionCountBigInt, ok := new(big.Int).SetString(slotSubmissionCount, 10)
-		if !ok {
-			log.Errorf("Failed to convert slot submission count %s to big.Int", slotSubmissionCount)
-			continue
-		}
+		// Check that submission count value is not empty
+		if slotSubmissionCount != "" {
+			submissionCountBigInt, ok := new(big.Int).SetString(slotSubmissionCount, 10)
+			if !ok {
+				log.Errorf("Failed to convert slot submission count %s to big.Int", slotSubmissionCount)
+				continue
+			}
 
-		slotIDs = append(slotIDs, big.NewInt(slotID))
-		submissionsList = append(submissionsList, submissionCountBigInt)
+			// Add the slotID and submission count to the respective arrays
+			slotIDs = append(slotIDs, big.NewInt(slotID))
+			submissionsList = append(submissionsList, submissionCountBigInt)
+		}
 	}
 
 	batchArrays(dataMarketAddress, currentDay.String(), slotIDs, submissionsList, 0)
