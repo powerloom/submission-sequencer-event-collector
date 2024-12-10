@@ -85,6 +85,26 @@ func Incr(ctx context.Context, key string) (int64, error) {
 	return result, nil
 }
 
+func GetBooleanValue(ctx context.Context, key string) (bool, error) {
+	value, err := RedisClient.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+
+	return value == "true", nil
+}
+
+func SetBooleanValue(ctx context.Context, key string, value bool, ttl time.Duration) error {
+	stringValue := "false"
+	if value {
+		stringValue = "true"
+	}
+
+	return RedisClient.Set(ctx, key, stringValue, ttl).Err()
+}
+
 func GetSetCardinality(ctx context.Context, key string) (int, error) {
 	count, err := RedisClient.SCard(ctx, key).Result()
 	if err != nil {
