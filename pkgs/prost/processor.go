@@ -342,8 +342,8 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 			// Calculate the day to check
 			dayToCheck := new(big.Int).Sub(currentDay, big.NewInt(int64(day)))
 
-			// Skip processing if day is 0
-			if dayToCheck.Cmp(big.NewInt(0)) == 0 {
+			// Skip processing if day is less than equal to zero
+			if dayToCheck.Int64() <= 0 {
 				continue
 			}
 
@@ -401,6 +401,17 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 
 					break
 				} else {
+					// Check if a zero count update has already been sent
+					sent, err := redis.GetBooleanValue(context.Background(), redis.ZeroCountUpdateKey(dataMarketAddress, dayToCheck.String()))
+					if err != nil {
+						log.Errorf("Error checking zero count update status for data market %s on day %s: %v", dataMarketAddress, dayToCheck.String(), err)
+						return err
+					}
+					if sent {
+						log.Infof("Skipping zero count update for data market %s on day %s as it has already been sent", dataMarketAddress, dayToCheck.String())
+						break
+					}
+
 					// Fallback to recalculation if cached value is not found
 					eligibleNodes := 0
 
@@ -425,6 +436,19 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 					}
 
 					log.Infof("Recalculated eligible nodes count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
+
+					// Check if recalculated eligible nodes count is zero
+					if eligibleNodes == 0 {
+						log.Infof("Eligible node count is zero for data market %s on day %s", dataMarketAddress, dayToCheck.String())
+
+						if err := redis.SetBooleanValue(context.Background(), redis.ZeroCountUpdateKey(dataMarketAddress, dayToCheck.String()), true, 24*time.Hour); err != nil {
+							log.Errorf("Error marking zero count update as sent for data market %s on day %s: %v", dataMarketAddress, dayToCheck.String(), err)
+							return err
+						}
+
+						log.Infof("Marked zero count update as sent for data market %s on day %s. Skipping update to relayer.", dataMarketAddress, dayToCheck.String())
+						break
+					}
 
 					// Attempt to update using recalculated value
 					if err = SendUpdateRewardsToRelayer(dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), eligibleNodes); err != nil {
