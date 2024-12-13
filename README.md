@@ -70,16 +70,16 @@ The Event Collector operates as a singleton component within the codebase, struc
 
 This modular design promotes a clear separation of responsibilities, with each module dedicated to a specific function within the system. Operating as a singleton component, the Event Collector provides a centralized, efficient, and reliable framework for event processing.
 
-## Relayer Interaction
+## On-Chain Updates via Relayer
 
-The Event Collector also interacts with the relayer to communicate critical updates, ensuring that all system components are synchronized and informed:
+The Event Collector facilitates updates to the Protocol State Contract by sending critical data through the relayer. These updates ensure that the protocol's on-chain state remains consistent and synchronized:
 
 ### Batch Processing Updates
-- **Batch Size:** Sends real-time updates to the relayer about batch sizes for each data market and epoch combination.
+- **Batch Size:** Real-time updates on batch sizes for each data market and epoch combination are sent via the relayer to the Protocol State Contract.
 
 ### Reward Management
-- **Intraday Updates:** Periodic reward updates with slotIDs and eligible submission counts are sent out to the relayer during the day. 
-- **Day Transition Updates:** Once the day transitions, a final update is sent to the relayer, including slotIDs, eligible submission counts, and the total number of eligible nodes.
+- **Intraday Updates:** Periodic updates containing slotIDs and eligible submission counts are transmitted to the Protocol State Contract via the relayer throughout the day.
+- **Day Transition Updates:** At the end of the day, a final update is sent, including slotIDs, eligible submission counts, and the total number of eligible nodes, ensuring the protocol reflects the current state accurately.
 
 ## APIs
 
