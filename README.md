@@ -7,6 +7,13 @@
   - [Batch Submission](#batch-submission)
 - [Architecture](#architecture)
 - [Relayer Interaction](#relayer-interaction)
+- [APIs](#apis)
+    - [`/totalSubmissions`](#totalsubmissions)
+    - [`/eligibleNodesCount`](#eligiblenodescount)
+    - [`/batchCount`](#batchcount)
+    - [`/epochSubmissionDetails`](#epochsubmissiondetails)
+    - [`/eligibleSlotSubmissionCount`](#eligibleslotsubmissioncount)
+    - [`/discardedSubmissions`](#discardedsubmissions)
 - [Find us](#find-us)
 
 ## Overview
@@ -68,11 +75,260 @@ This modular design promotes a clear separation of responsibilities, with each m
 The Event Collector also interacts with the relayer to communicate critical updates, ensuring that all system components are synchronized and informed:
 
 ### Batch Processing Updates
-- **Batch Size:** Sends real-time updates to the relayer about batch sizes for each data market and epoch combination
+- **Batch Size:** Sends real-time updates to the relayer about batch sizes for each data market and epoch combination.
 
 ### Reward Management
-- **Intraday Updates:** Periodic reward updates with slotIDs and eligible submission counts are sent out to the relayer during the day 
-- **Day Transition Updates:** After the day transitions, a final update is sent out to the relayer, including the eligible nodes count
+- **Intraday Updates:** Periodic reward updates with slotIDs and eligible submission counts are sent out to the relayer during the day. 
+- **Day Transition Updates:** Once the day transitions, a final update is sent to the relayer, including slotIDs, eligible submission counts, and the total number of eligible nodes.
+
+## APIs
+
+![APIs SwaggerUI](docs/assets/SwaggerUI.png)
+
+#### `/totalSubmissions`
+
+Retrieves eligible and total submission counts for a specific data market address across a specified number of past days.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "pastDays": 1,
+  "slotID": 100,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "response": [
+      {
+        "day": 10,
+        "eligibleSubmissions": 100,
+        "totalSubmissions": 110
+      }
+    ],
+    "success": true
+  },
+  "requestID": "request-id"
+}
+```
+
+#### `/eligibleNodesCount`
+
+Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address and epoch across a specified number of past days.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "pastDays": 3,
+  "epochID": 300,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "response": [
+      {
+        "day": 10,
+        "eligibleNodesCount": 2,
+        "slotIDs": [
+          "slotID-1",
+          "slotID-2"
+        ]
+      },
+      {
+        "day": 9,
+        "eligibleNodesCount": 1,
+        "slotIDs": [
+          "slotID-1"
+        ]
+      },
+      {
+        "day": 8,
+        "eligibleNodesCount": 1,
+        "slotIDs": [
+          "slotID-2"
+        ]
+      }
+    ],
+    "success": true
+  },
+  "requestID": "string"
+}
+```
+
+#### `/batchCount`
+
+Retrieves the total number of batches created within a specific epoch for a given data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "epochID": 300,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "response": {
+      "totalBatches": 15
+    },
+    "success": true
+  },
+  "requestID": "requestID"
+}
+```
+
+#### `/epochSubmissionDetails`
+
+Retrieves the submission count and details of all submissions for a specific epoch and data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "epochID": 300,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "response": {
+      "epochSubmissionCount": 100,
+      "submissions": [
+        {
+          "submissionData": {
+            "header": "header",
+            "request": {
+              "deadline": 0,
+              "epochID": 300,
+              "projectID": "projectID",
+              "slotID": 5,
+              "snapshotCID": "snapshotCID"
+            },
+            "signature": "signature"
+          },
+          "submissionID": "submissionID"
+        }
+      ]
+    },
+    "success": true
+  },
+  "requestID": "requestID"
+}
+```
+
+#### `/eligibleSlotSubmissionCount`
+
+Retrieves the submission counts of all eligible slotIDs within a specific epoch for a given data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "day": 10,
+  "epochID": 300,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "response": {
+      "eligibleSubmissionCounts": [
+        {
+          "slotID": 1,
+          "count": 1000
+        }
+        {
+          "slotID": 2,
+          "count": 1500
+        }
+        {
+          "slotID": 3,
+          "count": 2000
+        }
+      ]
+    },
+    "success": true
+  },
+  "requestID": "requestID"
+}
+```
+
+#### `/discardedSubmissions`
+
+Retrieves the discarded submissions details within a specific epoch for a given data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "day": 10,
+  "epochID": 300,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "response": {
+      "projects": [
+        {
+          "details": {
+            "discardedSubmissionCount": 4,
+            "discardedSubmissions": {
+              "slotID-1": [
+                "snapshotCID-1",
+                "snapshotCID-2"
+              ],
+              "slotID-2": [
+                "snapshotCID-3",
+                "snapshotCID-4"
+              ]
+            },
+            "mostFrequentSnapshotCID": "snapshotCID"
+          },
+          "projectID": "projectID"
+        }
+      ]
+    },
+    "success": true
+  },
+  "requestID": "requestID"
+}
+```
+
 
 ## Find us
 
