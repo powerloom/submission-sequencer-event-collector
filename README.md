@@ -83,6 +83,8 @@ The Event Collector facilitates updates to the Protocol State Contract by sendin
 
 ## APIs
 
+### Swagger API Explorer
+
 ![APIs SwaggerUI](docs/assets/SwaggerUI.png)
 
 #### `/totalSubmissions`
