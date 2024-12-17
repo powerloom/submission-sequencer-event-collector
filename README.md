@@ -32,10 +32,15 @@ Key functionalities:
 - **Batch Submission:** After batch preparation, the system constructs submission details and pushes these batches into the finalizer queue for further processing.
 
 ### Block Detection
-The Event Collector actively monitors the blockchain to detect new blocks, maintaining real-time synchronization with the network. It begins by identifying the latest block and processes subsequent blocks in sequential order. Key details, such as block numbers and block hashes, are captured and stored in a distributed storage solution like Redis, enabling efficient event processing and reliable data validation.
+The Event Collector actively monitors the blockchain to detect new blocks, maintaining real-time synchronization with the network. It begins by identifying the latest block and processes subsequent blocks in sequential order. Key details, such as block numbers and block hashes, are captured and stored in Redis, enabling efficient event processing and reliable data validation.
 
 ### Event Processing
-Once a block is detected, the Event Collector extracts and processes the events emitted from the block, focusing on those critical to the Submission Sequencer system, such as the `EpochReleased` event. Using a filter query applied during block detection, the system retrieves logs associated with specific smart contract events. 
+Once a block is detected, the Event Collector extracts and processes the events emitted from the block, focusing on those critical to the Submission Sequencer system. These events include: 
+- `EpochReleased`: Signals the release of a new epoch, triggering the start of batch submission for that epoch
+- `SnapshotBatchSubmitted`: Signals that the sequencer has submitted a batch of snapshot submissions, including their claimed finalizations, for a specific epochID and data market
+- `EndBatchSubmissions`: This event is emitted when the sequencer has completed submitting all snapshot batches for a specific epochID and data market
+
+Using a filter query applied during block detection, the system retrieves logs associated with specific smart contract events. 
 
 These logs are then parsed to extract event parameters, such as the epoch release block number, which is then used to calculate the submission limit block number by adding the submission window. 
 
@@ -53,7 +58,7 @@ When a match is identified, it indicates the end of the submission window, promp
 ### Batch Submission
 After the batches are organized, they are iterated over, and the relevant data is transformed into submission details. These details are then placed into the Finalizer Queue for further processing.
 
-The **Finalizer**, an auto-scaled component that follows, retrieves and processes data from the Finalizer Queue, completing the batch processing pipeline. This architecture enables the system to scale effectively, managing submission tasks in parallel and optimizing both performance and throughput.
+The [**Finalizer**](https://github.com/PowerLoom/submission-sequencer-finalizer), an auto-scaled component that follows, retrieves and processes data from the Finalizer Queue, completing the batch processing pipeline. This architecture enables the system to scale effectively, managing submission tasks in parallel and optimizing both performance and throughput.
 
 ## Architecture
 
@@ -73,9 +78,6 @@ This modular design promotes a clear separation of responsibilities, with each m
 ## On-Chain Updates via Relayer
 
 The Event Collector facilitates updates to the Protocol State Contract by sending critical data through the relayer. These updates ensure that the protocol's on-chain state remains consistent and synchronized:
-
-### Batch Processing Updates
-- **Batch Size:** Real-time updates on batch sizes for each data market and epoch combination are sent via the relayer to the Protocol State Contract.
 
 ### Reward Management
 - **Intraday Updates:** Periodic updates containing slotIDs and eligible submission counts are transmitted to the Protocol State Contract via the relayer throughout the day.
