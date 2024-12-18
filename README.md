@@ -6,7 +6,7 @@
   - [Batch Preparation](#batch-preparation)
   - [Batch Submission](#batch-submission)
 - [Architecture](#architecture)
-- [Relayer Interaction](#relayer-interaction)
+- [On-Chain Updates](#on-chain-updates-via-relayer)
 - [APIs](#apis)
     - [`/totalSubmissions`](#totalsubmissions)
     - [`/eligibleNodesCount`](#eligiblenodescount)
