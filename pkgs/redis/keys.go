@@ -90,10 +90,10 @@ func ZeroCountUpdateKey(dataMarketAddress, day string) string {
 	return fmt.Sprintf("%s.%s.%s", pkgs.ZeroCountKey, strings.ToLower(dataMarketAddress), day)
 }
 
-func LastSimulatedSubmission(dataMarketAddress string) string {
-	return fmt.Sprintf("%s.%s", pkgs.LastSimulatedSubmissionKey, strings.ToLower(dataMarketAddress))
+func LastSimulatedSubmission(dataMarketAddress string, slotId uint64) string {
+	return fmt.Sprintf("%s.%s.%d", pkgs.LastSimulatedSubmissionKey, strings.ToLower(dataMarketAddress), slotId)
 }
 
-func LastSnapshotSubmission(dataMarketAddress string) string {
-	return fmt.Sprintf("%s.%s", pkgs.LastSnapshotSubmissionKey, strings.ToLower(dataMarketAddress))
+func LastSnapshotSubmission(dataMarketAddress string, slotId uint64) string {
+	return fmt.Sprintf("%s.%s.%d", pkgs.LastSnapshotSubmissionKey, strings.ToLower(dataMarketAddress), slotId)
 }

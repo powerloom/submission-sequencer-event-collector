@@ -63,8 +63,9 @@ type EligibleNodesRequest struct {
 	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
-type DataMarketRequest struct {
+type SlotIdInDataMarketRequest struct {
 	DataMarketAddress string `json:"dataMarketAddress"`
+	SlotID            int    `json:"slotID"`
 }
 
 type EpochDataMarketRequest struct {
@@ -828,7 +829,7 @@ func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last simulated submission"
 // @Router /lastSimulatedSubmission [post]
 func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
-	var request DataMarketRequest
+	var request SlotIdInDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -848,7 +849,7 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch the last simulated submission from Redis
-	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(request.DataMarketAddress)
+	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(request.DataMarketAddress, uint64(request.SlotID))
 	lastSimulatedSubmission, err := redis.Get(context.Background(), lastSimulatedSubmissionKey)
 	if err != nil || lastSimulatedSubmission == "" {
 		http.Error(w, "Failed to fetch last simulated submission", http.StatusInternalServerError)
@@ -893,7 +894,7 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last snapshot submission"
 // @Router /lastSnapshotSubmission [post]
 func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
-	var request DataMarketRequest
+	var request SlotIdInDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -913,7 +914,7 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch the last snapshot submission from Redis
-	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(request.DataMarketAddress)
+	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(request.DataMarketAddress, uint64(request.SlotID))
 	lastSnapshotSubmission, err := redis.Get(context.Background(), lastSnapshotSubmissionKey)
 	if err != nil || lastSnapshotSubmission == "" {
 		http.Error(w, "Failed to fetch last snapshot submission", http.StatusInternalServerError)

@@ -661,7 +661,7 @@ func TestHandleLastSimulatedSubmission(t *testing.T) {
 	value := time.Now().Unix()
 
 	// Set the last simulated submission details
-	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(dataMarketAddress)
+	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(dataMarketAddress, 1)
 	err := redis.RedisClient.Set(context.Background(), lastSimulatedSubmissionKey, value, 0).Err()
 	assert.NoError(t, err)
 
@@ -676,12 +676,12 @@ func TestHandleLastSimulatedSubmission(t *testing.T) {
 	}{
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1}`,
 			statusCode: http.StatusBadRequest,
 		},
 		{
 			name:       "Successfully fetched last simulated submission timestamp",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1}`,
 			statusCode: http.StatusOK,
 			timestamp:  timestamp,
 		},
@@ -730,7 +730,7 @@ func TestHandleLastSnapshotSubmission(t *testing.T) {
 	value := time.Now().Unix()
 
 	// Set the last simulated submission details
-	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(dataMarketAddress)
+	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(dataMarketAddress, 1)
 	err := redis.RedisClient.Set(context.Background(), lastSnapshotSubmissionKey, value, 0).Err()
 	assert.NoError(t, err)
 
@@ -745,12 +745,12 @@ func TestHandleLastSnapshotSubmission(t *testing.T) {
 	}{
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1}`,
 			statusCode: http.StatusBadRequest,
 		},
 		{
 			name:       "Successfully fetched last snapshot submission timestamp",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1}`,
 			statusCode: http.StatusOK,
 			timestamp:  timestamp,
 		},
