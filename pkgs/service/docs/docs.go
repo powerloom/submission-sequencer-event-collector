@@ -252,7 +252,7 @@ const docTemplate = `{
         },
         "/lastSimulatedSubmission": {
             "post": {
-                "description": "Retrieves the last time a simulation submission was received for a given data market address",
+                "description": "Retrieves the last time a simulation submission was received for a given data market address and slot ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -265,12 +265,12 @@ const docTemplate = `{
                 "summary": "Get the last time a simulation submission was received",
                 "parameters": [
                     {
-                        "description": "Data market address request payload",
+                        "description": "Data market address and slot ID request payload",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/service.DataMarketRequest"
+                            "$ref": "#/definitions/service.SlotIdInDataMarketRequest"
                         }
                     }
                 ],
@@ -282,7 +282,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., invalid data market address)",
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid data market address or slot ID)",
                         "schema": {
                             "type": "string"
                         }
@@ -311,12 +311,12 @@ const docTemplate = `{
                 "summary": "Get the last time a snapshot submission against a released epoch was received",
                 "parameters": [
                     {
-                        "description": "Data market address request payload",
+                        "description": "Data market address and slot ID request payload",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/service.DataMarketRequest"
+                            "$ref": "#/definitions/service.SlotIdInDataMarketRequest"
                         }
                     }
                 ],
@@ -328,7 +328,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., invalid data market address)",
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid data market address or slot ID)",
                         "schema": {
                             "type": "string"
                         }
@@ -409,14 +409,6 @@ const docTemplate = `{
                 },
                 "totalSubmissions": {
                     "type": "integer"
-                }
-            }
-        },
-        "service.DataMarketRequest": {
-            "type": "object",
-            "properties": {
-                "dataMarketAddress": {
-                    "type": "string"
                 }
             }
         },
@@ -740,6 +732,17 @@ const docTemplate = `{
                 },
                 "requestID": {
                     "type": "string"
+                }
+            }
+        },
+        "service.SlotIdInDataMarketRequest": {
+            "type": "object",
+            "properties": {
+                "dataMarketAddress": {
+                    "type": "string"
+                },
+                "slotID": {
+                    "type": "integer"
                 }
             }
         },
