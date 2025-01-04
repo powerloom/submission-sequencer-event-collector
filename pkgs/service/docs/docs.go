@@ -250,6 +250,98 @@ const docTemplate = `{
                 }
             }
         },
+        "/lastSimulatedSubmission": {
+            "post": {
+                "description": "Retrieves the last time a simulation submission was received for a given data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Submissions"
+                ],
+                "summary": "Get the last time a simulation submission was received",
+                "parameters": [
+                    {
+                        "description": "Data market address request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.DataMarketRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error: Failed to fetch last simulated submission",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/lastSnapshotSubmission": {
+            "post": {
+                "description": "Retrieves the last time a snapshot submission against a released epoch was received for a given data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Submissions"
+                ],
+                "summary": "Get the last time a snapshot submission against a released epoch was received",
+                "parameters": [
+                    {
+                        "description": "Data market address request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.DataMarketRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error: Failed to fetch last snapshot submission",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/totalSubmissions": {
             "post": {
                 "description": "Retrieves eligible and total submission counts for a specific data market address across a specified number of past days",
@@ -317,6 +409,14 @@ const docTemplate = `{
                 },
                 "totalSubmissions": {
                     "type": "integer"
+                }
+            }
+        },
+        "service.DataMarketRequest": {
+            "type": "object",
+            "properties": {
+                "dataMarketAddress": {
+                    "type": "string"
                 }
             }
         },
@@ -535,6 +635,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.InfoType-string": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "service.RequestSwagger": {
             "type": "object",
             "properties": {
@@ -615,6 +726,17 @@ const docTemplate = `{
             "properties": {
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_ResponseArray-service_EligibleNodes"
+                },
+                "requestID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.Response-string": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-string"
                 },
                 "requestID": {
                     "type": "string"
