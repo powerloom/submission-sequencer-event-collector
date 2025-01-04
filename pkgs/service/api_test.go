@@ -675,6 +675,11 @@ func TestHandleLastSimulatedSubmission(t *testing.T) {
 		timestamp  string
 	}{
 		{
+			name:       "Invalid SlotID",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000}`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
 			name:       "Invalid Data Market Address",
 			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1}`,
 			statusCode: http.StatusBadRequest,
@@ -743,6 +748,11 @@ func TestHandleLastSnapshotSubmission(t *testing.T) {
 		statusCode int
 		timestamp  string
 	}{
+		{
+			name:       "Invalid SlotID",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000}`,
+			statusCode: http.StatusBadRequest,
+		},
 		{
 			name:       "Invalid Data Market Address",
 			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1}`,

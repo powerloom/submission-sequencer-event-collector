@@ -63,7 +63,7 @@ type EligibleNodesRequest struct {
 	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
-type SlotIdInDataMarketRequest struct {
+type SlotIDInDataMarketRequest struct {
 	DataMarketAddress string `json:"dataMarketAddress"`
 	SlotID            int    `json:"slotID"`
 }
@@ -819,17 +819,17 @@ func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
 
 // handleLastSimulatedSubmission godoc
 // @Summary Get the last time a simulation submission was received
-// @Description Retrieves the last time a simulation submission was received for a given data market address and slot ID
+// @Description Retrieves the last time a simulation submission was received for a given data market address and slotID
 // @Tags Submissions
 // @Accept json
 // @Produce json
-// @Param request body SlotIdInDataMarketRequest true "Data market address and slot ID request payload"
+// @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
 // @Success 200 {object} Response[string]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid data market address or slot ID)"
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last simulated submission"
 // @Router /lastSimulatedSubmission [post]
 func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
-	var request SlotIdInDataMarketRequest
+	var request SlotIDInDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -845,6 +845,12 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 
 	if !isValid {
 		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
 		return
 	}
 
@@ -884,17 +890,17 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 
 // handleLastSnapshotSubmission godoc
 // @Summary Get the last time a snapshot submission against a released epoch was received
-// @Description Retrieves the last time a snapshot submission against a released epoch was received for a given data market address
+// @Description Retrieves the last time a snapshot submission against a released epoch was received for a given data market address and slotID
 // @Tags Submissions
 // @Accept json
 // @Produce json
-// @Param request body SlotIdInDataMarketRequest true "Data market address and slot ID request payload"
+// @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
 // @Success 200 {object} Response[string]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid data market address or slot ID)"
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last snapshot submission"
 // @Router /lastSnapshotSubmission [post]
 func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
-	var request SlotIdInDataMarketRequest
+	var request SlotIDInDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -910,6 +916,12 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 
 	if !isValid {
 		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
 		return
 	}
 
