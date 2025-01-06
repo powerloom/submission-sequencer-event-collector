@@ -656,6 +656,9 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 }
 
 func TestHandleLastSimulatedSubmission(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
 	// Set the params required
 	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
 	value := time.Now().Unix()
@@ -675,18 +678,23 @@ func TestHandleLastSimulatedSubmission(t *testing.T) {
 		timestamp  string
 	}{
 		{
+			name:       "Invalid token",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "invalid-token"}`,
+			statusCode: http.StatusUnauthorized,
+		},
+		{
 			name:       "Invalid SlotID",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000, "token": "valid-token"}`,
 			statusCode: http.StatusBadRequest,
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1, "token": "valid-token"}`,
 			statusCode: http.StatusBadRequest,
 		},
 		{
 			name:       "Successfully fetched last simulated submission timestamp",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "valid-token"}`,
 			statusCode: http.StatusOK,
 			timestamp:  timestamp,
 		},
@@ -730,6 +738,9 @@ func TestHandleLastSimulatedSubmission(t *testing.T) {
 }
 
 func TestHandleLastSnapshotSubmission(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
 	// Set the params required
 	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
 	value := time.Now().Unix()
@@ -749,18 +760,23 @@ func TestHandleLastSnapshotSubmission(t *testing.T) {
 		timestamp  string
 	}{
 		{
+			name:       "Invalid token",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "invalid-token"}`,
+			statusCode: http.StatusUnauthorized,
+		},
+		{
 			name:       "Invalid SlotID",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000, "token": "valid-token"}`,
 			statusCode: http.StatusBadRequest,
 		},
 		{
 			name:       "Invalid Data Market Address",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1, "token": "valid-token"}`,
 			statusCode: http.StatusBadRequest,
 		},
 		{
 			name:       "Successfully fetched last snapshot submission timestamp",
-			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1}`,
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "valid-token"}`,
 			statusCode: http.StatusOK,
 			timestamp:  timestamp,
 		},

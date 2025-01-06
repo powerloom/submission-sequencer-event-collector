@@ -64,6 +64,7 @@ type EligibleNodesRequest struct {
 }
 
 type SlotIDInDataMarketRequest struct {
+	Token             string `json:"token"`
 	DataMarketAddress string `json:"dataMarketAddress"`
 	SlotID            int    `json:"slotID"`
 }
@@ -835,6 +836,11 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
 	isValid := false
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
 		if request.DataMarketAddress == dataMarketAddress {
@@ -903,6 +909,10 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 	var request SlotIDInDataMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
 		return
 	}
 
