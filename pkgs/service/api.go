@@ -14,6 +14,7 @@ import (
 	"submission-sequencer-collector/pkgs/prost"
 	"submission-sequencer-collector/pkgs/redis"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -60,6 +61,12 @@ type EligibleNodesRequest struct {
 	EpochID           int    `json:"epochID"`
 	PastDays          int    `json:"pastDays"`
 	DataMarketAddress string `json:"dataMarketAddress"`
+}
+
+type SlotIDInDataMarketRequest struct {
+	Token             string `json:"token"`
+	DataMarketAddress string `json:"dataMarketAddress"`
+	SlotID            int    `json:"slotID"`
 }
 
 type EpochDataMarketRequest struct {
@@ -811,6 +818,159 @@ func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleLastSimulatedSubmission godoc
+// @Summary Get the last time a simulation submission was received
+// @Description Retrieves the last time a simulation submission was received for a given data market address and slotID
+// @Tags Submissions
+// @Accept json
+// @Produce json
+// @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
+// @Success 200 {object} Response[string]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Failure 500 {string} string "Internal Server Error: Failed to fetch last simulated submission"
+// @Router /lastSimulatedSubmission [post]
+func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
+	var request SlotIDInDataMarketRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the last simulated submission from Redis
+	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(request.DataMarketAddress, uint64(request.SlotID))
+	lastSimulatedSubmission, err := redis.Get(context.Background(), lastSimulatedSubmissionKey)
+	if err != nil || lastSimulatedSubmission == "" {
+		http.Error(w, "Failed to fetch last simulated submission", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert the timestamp to a human-readable format
+	timestamp, err := strconv.ParseInt(lastSimulatedSubmission, 10, 64)
+	if err != nil {
+		http.Error(w, "Failed to parse timestamp", http.StatusInternalServerError)
+		return
+	}
+	lastSimulatedSubmissionTime := time.Unix(timestamp, 0).Format(time.RFC3339)
+
+	info := InfoType[string]{
+		Success:  true,
+		Response: lastSimulatedSubmissionTime,
+	}
+
+	response := Response[string]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleLastSnapshotSubmission godoc
+// @Summary Get the last time a snapshot submission against a released epoch was received
+// @Description Retrieves the last time a snapshot submission against a released epoch was received for a given data market address and slotID
+// @Tags Submissions
+// @Accept json
+// @Produce json
+// @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
+// @Success 200 {object} Response[string]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Failure 500 {string} string "Internal Server Error: Failed to fetch last snapshot submission"
+// @Router /lastSnapshotSubmission [post]
+func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
+	var request SlotIDInDataMarketRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the last snapshot submission from Redis
+	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(request.DataMarketAddress, uint64(request.SlotID))
+	lastSnapshotSubmission, err := redis.Get(context.Background(), lastSnapshotSubmissionKey)
+	if err != nil || lastSnapshotSubmission == "" {
+		http.Error(w, "Failed to fetch last snapshot submission", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert the timestamp to a human-readable format
+	timestamp, err := strconv.ParseInt(lastSnapshotSubmission, 10, 64)
+	if err != nil {
+		http.Error(w, "Failed to parse timestamp", http.StatusInternalServerError)
+		return
+	}
+	lastSnapshotSubmissionTime := time.Unix(timestamp, 0).Format(time.RFC3339)
+
+	info := InfoType[string]{
+		Success:  true,
+		Response: lastSnapshotSubmissionTime,
+	}
+
+	response := Response[string]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func RequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.New().String()
@@ -856,6 +1016,8 @@ func StartApiServer() {
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
 	mux.HandleFunc("/eligibleSlotSubmissionCount", handleEligibleSlotSubmissionCount)
 	mux.HandleFunc("/discardedSubmissions", handleDiscardedSubmissions)
+	mux.HandleFunc("/lastSimulatedSubmission", handleLastSimulatedSubmission)
+	mux.HandleFunc("/lastSnapshotSubmission", handleLastSnapshotSubmission)
 
 	// Enable CORS with specific settings
 	corsHandler := handlers.CORS(

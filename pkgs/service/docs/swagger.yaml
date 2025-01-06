@@ -152,6 +152,13 @@ definitions:
       success:
         type: boolean
     type: object
+  service.InfoType-string:
+    properties:
+      response:
+        type: string
+      success:
+        type: boolean
+    type: object
   service.RequestSwagger:
     properties:
       deadline:
@@ -205,6 +212,22 @@ definitions:
       info:
         $ref: '#/definitions/service.InfoType-service_ResponseArray-service_EligibleNodes'
       requestID:
+        type: string
+    type: object
+  service.Response-string:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-string'
+      requestID:
+        type: string
+    type: object
+  service.SlotIDInDataMarketRequest:
+    properties:
+      dataMarketAddress:
+        type: string
+      slotID:
+        type: integer
+      token:
         type: string
     type: object
   service.SnapshotSubmissionSwagger:
@@ -404,6 +427,79 @@ paths:
           schema:
             type: string
       summary: Get epoch submission details
+      tags:
+      - Submissions
+  /lastSimulatedSubmission:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the last time a simulation submission was received for
+        a given data market address and slotID
+      parameters:
+      - description: Data market address and slotID request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.SlotIDInDataMarketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-string'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., invalid slotID
+            or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+        "500":
+          description: 'Internal Server Error: Failed to fetch last simulated submission'
+          schema:
+            type: string
+      summary: Get the last time a simulation submission was received
+      tags:
+      - Submissions
+  /lastSnapshotSubmission:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the last time a snapshot submission against a released
+        epoch was received for a given data market address and slotID
+      parameters:
+      - description: Data market address and slotID request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.SlotIDInDataMarketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-string'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., invalid slotID
+            or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+        "500":
+          description: 'Internal Server Error: Failed to fetch last snapshot submission'
+          schema:
+            type: string
+      summary: Get the last time a snapshot submission against a released epoch was
+        received
       tags:
       - Submissions
   /totalSubmissions:

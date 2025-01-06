@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
@@ -649,6 +650,170 @@ func TestHandleDiscardedSubmissions(t *testing.T) {
 				err := json.NewDecoder(rr.Body).Decode(&response)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.response.Projects, response.Info.Response.Projects)
+			}
+		})
+	}
+}
+
+func TestHandleLastSimulatedSubmission(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the params required
+	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
+	value := time.Now().Unix()
+
+	// Set the last simulated submission details
+	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(dataMarketAddress, 1)
+	err := redis.RedisClient.Set(context.Background(), lastSimulatedSubmissionKey, value, 0).Err()
+	assert.NoError(t, err)
+
+	// Convert value into time format
+	timestamp := time.Unix(value, 0).Format(time.RFC3339)
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		timestamp  string
+	}{
+		{
+			name:       "Invalid token",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "invalid-token"}`,
+			statusCode: http.StatusUnauthorized,
+		},
+		{
+			name:       "Invalid SlotID",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000, "token": "valid-token"}`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1, "token": "valid-token"}`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Successfully fetched last simulated submission timestamp",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "valid-token"}`,
+			statusCode: http.StatusOK,
+			timestamp:  timestamp,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/lastSimulatedSubmission", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleLastSimulatedSubmission)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			// Assert the status code
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			// If the status code is OK, compare the response
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool   `json:"success"`
+						Response string `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"requestID"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.timestamp, response.Info.Response)
+			}
+		})
+	}
+}
+
+func TestHandleLastSnapshotSubmission(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the params required
+	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
+	value := time.Now().Unix()
+
+	// Set the last simulated submission details
+	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(dataMarketAddress, 1)
+	err := redis.RedisClient.Set(context.Background(), lastSnapshotSubmissionKey, value, 0).Err()
+	assert.NoError(t, err)
+
+	// Convert value into time format
+	timestamp := time.Unix(value, 0).Format(time.RFC3339)
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		timestamp  string
+	}{
+		{
+			name:       "Invalid token",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "invalid-token"}`,
+			statusCode: http.StatusUnauthorized,
+		},
+		{
+			name:       "Invalid SlotID",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 100000, "token": "valid-token"}`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d", "slotID": 1, "token": "valid-token"}`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Successfully fetched last snapshot submission timestamp",
+			body:       `{"dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "slotID": 1, "token": "valid-token"}`,
+			statusCode: http.StatusOK,
+			timestamp:  timestamp,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/lastSnapshotSubmission", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleLastSnapshotSubmission)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			// Assert the status code
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			// If the status code is OK, compare the response
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool   `json:"success"`
+						Response string `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"requestID"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.timestamp, response.Info.Response)
 			}
 		})
 	}
