@@ -827,6 +827,7 @@ func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
 // @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
 // @Success 200 {object} Response[string]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last simulated submission"
 // @Router /lastSimulatedSubmission [post]
 func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
@@ -903,6 +904,7 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 // @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
 // @Success 200 {object} Response[string]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last snapshot submission"
 // @Router /lastSnapshotSubmission [post]
 func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {

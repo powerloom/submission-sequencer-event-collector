@@ -287,6 +287,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error: Failed to fetch last simulated submission",
                         "schema": {
@@ -329,6 +335,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
                         "schema": {
                             "type": "string"
                         }
@@ -743,6 +755,9 @@ const docTemplate = `{
                 },
                 "slotID": {
                     "type": "integer"
+                },
+                "token": {
+                    "type": "string"
                 }
             }
         },
