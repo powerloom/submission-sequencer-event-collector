@@ -14,6 +14,8 @@
     - [`/epochSubmissionDetails`](#epochsubmissiondetails)
     - [`/eligibleSlotSubmissionCount`](#eligibleslotsubmissioncount)
     - [`/discardedSubmissions`](#discardedsubmissions)
+    - [`/lastSimulatedSubmission`](#lastsimulatedsubmission)
+    - [`/lastSnapshotSubmission`](#lastsnapshotsubmission)
 - [Find us](#find-us)
 
 ## Overview
@@ -328,6 +330,56 @@ Retrieves the discarded submissions details within a specific epoch for a given 
       ]
     },
     "success": true
+  },
+  "requestID": "requestID"
+}
+```
+
+#### `/lastSimulatedSubmission`
+
+Retrieves the last time a simulation submission was received for a specific slotID and data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "slotID": 1,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "success": true,
+    "response": "2025-01-06T17:22:11+05:30"
+  },
+  "requestID": "requestID"
+}
+```
+
+#### `/lastSnapshotSubmission`
+
+Retrieves the last time a snapshot submission against a released epoch was received for a specific slotID and data market address.
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "slotID": 1,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "success": true,
+    "response": "2025-01-06T17:22:11+05:30"
   },
   "requestID": "requestID"
 }

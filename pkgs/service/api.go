@@ -913,6 +913,7 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	if request.Token != config.SettingsObj.AuthReadToken {
 		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
 		return
