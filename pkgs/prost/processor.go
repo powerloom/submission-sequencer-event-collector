@@ -170,7 +170,9 @@ func ProcessEvents(block *types.Block) {
 				// Serialize the struct to JSON
 				jsonData, err := json.Marshal(batch)
 				if err != nil {
-					log.Errorf("Serialization failed for batch details of epoch %s, data market %s: %v", epochID.String(), dataMarketAddress, err)
+					errMsg := fmt.Sprintf("Serialization failed for batch details of epoch %s, data market %s: %v", epochID.String(), dataMarketAddress, err)
+					clients.SendFailureNotification(pkgs.ProcessEvents, err.Error(), time.Now().String(), "High")
+					log.Error(errMsg)
 					continue
 				}
 
@@ -207,7 +209,9 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 			// Fetch all the epoch marker keys from Redis for this data market address
 			epochMarkerKeys, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
 			if err != nil {
-				log.Errorf("Failed to fetch epoch markers from Redis for data market %s: %s", dataMarketAddress, err)
+				errMsg := fmt.Sprintf("Failed to fetch epoch markers from Redis for data market %s: %s", dataMarketAddress, err)
+				clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
+				log.Error(errMsg)
 				return
 			}
 
@@ -218,13 +222,17 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 				// Retrieve the epoch marker details from Redis
 				epochMarkerDetailsJSON, err := redis.RedisClient.Get(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
 				if err != nil {
-					log.Errorf("Failed to fetch epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
+					errMsg := fmt.Sprintf("Failed to fetch epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
+					clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
+					log.Error(errMsg)
 					continue
 				}
 
 				var epochMarkerDetails EpochMarkerDetails
 				if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
-					log.Errorf("Failed to unmarshal epoch marker details for key %s: %s", epochMarkerKey, err)
+					errMsg := fmt.Sprintf("Failed to unmarshal epoch marker details for key %s: %s", epochMarkerKey, err)
+					clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
+					log.Error(errMsg)
 					continue
 				}
 
@@ -335,7 +343,9 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		// Serialize the struct to JSON
 		jsonData, err := json.Marshal(submissionDetails)
 		if err != nil {
-			log.Errorf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			errMsg := fmt.Sprintf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+			log.Error(errMsg)
 		}
 
 		// Push the serialized data to Redis
@@ -349,7 +359,9 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		// Serialize the batch details to JSON
 		batchJSONData, err := json.Marshal(batch)
 		if err != nil {
-			log.Errorf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			errMsg := fmt.Sprintf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+			log.Error(errMsg)
 		}
 
 		// Convert the batch ID to a big integer
@@ -677,7 +689,7 @@ func sendFinalRewards(currentEpoch *big.Int) {
 				return
 			}
 
-			log.Infof("Fetched %d day transition epoch marker keys for data market %s: %v", len(epochMarkerKeys), dataMarketAddress, epochMarkerKeys)
+			log.Infof("✅ Fetched %d day transition epoch marker keys for data market %s: %v", len(epochMarkerKeys), dataMarketAddress, epochMarkerKeys)
 
 			// Process each day transition epoch marker key for this data market address
 			for _, epochMarkerKey := range epochMarkerKeys {
