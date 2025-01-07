@@ -16,6 +16,7 @@
     - [`/discardedSubmissions`](#discardedsubmissions)
     - [`/lastSimulatedSubmission`](#lastsimulatedsubmission)
     - [`/lastSnapshotSubmission`](#lastsnapshotsubmission)
+- [Update Swagger Documentation](#update-swagger-documentation)
 - [Find us](#find-us)
 
 ## Overview
@@ -384,6 +385,36 @@ Retrieves the last time a snapshot submission against a released epoch was recei
   "requestID": "requestID"
 }
 ```
+
+## Update Swagger Documentation
+
+Here are the steps to update existing swagger documentation:
+
+1) **Delete the existing docs folder**
+  
+      Navigate to the `pkgs/service/` directory and delete the current docs folder.
+
+2) **Navigate to the service folder**
+
+    Use the following command to move into the service directory under `pkgs` folder:
+    ```bash
+    cd pkgs/service/
+    ```
+
+3) **Generate new Swagger docs**
+
+    Run the following command to generate a new docs folder:
+    ```bash
+    swag init -g api.go
+    ```
+
+4) **Import the updated docs folder**
+
+    Add the following line to the import section of `api.go` file:
+    ```bash
+    _ "submission-sequencer-collector/pkgs/service/docs"
+    ```
+
 
 
 ## Find us
