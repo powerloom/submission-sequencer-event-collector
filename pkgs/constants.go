@@ -11,6 +11,7 @@ const (
 	SendEligibleNodesCount     = "SequencerEventCollector: SendEligibleNodesCount"
 	SendUpdateRewardsToRelayer = "SequencerEventCollector: SendUpdateRewardsToRelayer"
 	HandleDayTransition        = "SequencerEventCollector: HandleDayTransition"
+	TriggerBatchPreparation    = "SequencerEventCollector: TriggerBatchPreparation"
 )
 
 // General Key Constants

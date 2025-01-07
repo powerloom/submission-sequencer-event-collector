@@ -67,8 +67,8 @@ func ProcessEvents(block *types.Block) {
 
 	if err = backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
 		errorMsg := fmt.Sprintf("Error fetching logs for block number %d: %s", block.Number().Int64(), err.Error())
-		log.Error(errorMsg)
 		clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
+		log.Error(errorMsg)
 		return
 	}
 
@@ -111,7 +111,9 @@ func ProcessEvents(block *types.Block) {
 				if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
 					// Send periodic updateRewards to relayer throughtout the day
 					if err := sendRewardUpdates(dataMarketAddress, newEpochID.String()); err != nil {
-						log.Errorf("Failed to send reward updates for epoch %s within data market %s: %v", newEpochID.String(), dataMarketAddress, err)
+						errMsg := fmt.Sprintf("Failed to send reward updates for epoch %s within data market %s: %v", newEpochID.String(), dataMarketAddress, err)
+						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errMsg, time.Now().String(), "High")
+						log.Error(errMsg)
 						continue
 					}
 				}
@@ -174,7 +176,9 @@ func ProcessEvents(block *types.Block) {
 
 				// Push the serialized data to Redis
 				if err = redis.RedisClient.LPush(context.Background(), "attestorQueue", jsonData).Err(); err != nil {
-					log.Errorf("Error pushing batch details to Redis for epoch %s, data market %s: %v", epochID.String(), dataMarketAddress, err)
+					errMsg := fmt.Sprintf("Error pushing batch details to attestor queue in Redis for epoch %s, data market %s: %v", epochID.String(), dataMarketAddress, err)
+					clients.SendFailureNotification(pkgs.ProcessEvents, err.Error(), time.Now().String(), "High")
+					log.Error(errMsg)
 					continue
 				}
 
@@ -265,7 +269,9 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		// Fetch the block hash from Redis using the generated key
 		blockHashValue, err := redis.Get(context.Background(), blockKey)
 		if err != nil {
-			log.Errorf("Failed to fetch block hash for block %d: %s", blockNum, err.Error())
+			errMsg := fmt.Sprintf("Failed to fetch block hash for block %d: %s", blockNum, err.Error())
+			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+			log.Error(errMsg)
 			continue // Skip this block and move to the next
 		}
 
@@ -281,7 +287,9 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 	// Fetch valid submission keys for the epoch
 	submissionKeys, err := getValidSubmissionKeys(context.Background(), epochID.Uint64(), headers, dataMarketAddress)
 	if err != nil {
-		log.Errorf("Failed to fetch submission keys for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err.Error())
+		errMsg := fmt.Sprintf("Failed to fetch submission keys for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err.Error())
+		clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+		log.Error(errMsg)
 	}
 
 	log.Infof("🔑 Retrieved %d valid submission keys for epoch %s in data market %s", len(submissionKeys), epochID.String(), dataMarketAddress)
@@ -306,7 +314,9 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 
 	// Send the size of the batches to the external tx relayer service
 	if err = SendBatchSizeToRelayer(dataMarketAddress, epochID, len(batches)); err != nil {
-		log.Errorf("Failed to send submission batch size for epoch %s in data market %s: %v", epochID, dataMarketAddress, err)
+		errMsg := fmt.Sprintf("🚨 Failed to send submission batch size for epoch %s in data market %s to relayer: %s", epochID.String(), dataMarketAddress, err.Error())
+		clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+		log.Error(errMsg)
 	}
 
 	log.Infof("📨 Batch size %d sent successfully for epoch %s in data market %s", len(batches), epochID.String(), dataMarketAddress)
@@ -325,26 +335,28 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 		// Serialize the struct to JSON
 		jsonData, err := json.Marshal(submissionDetails)
 		if err != nil {
-			log.Fatalf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			log.Errorf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
 		}
 
 		// Push the serialized data to Redis
 		err = redis.RedisClient.LPush(context.Background(), "finalizerQueue", jsonData).Err()
 		if err != nil {
-			log.Fatalf("Error pushing submission details of batch %d to Redis for epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			errMsg := fmt.Sprintf("Error pushing submission details of batch %d to Redis for epoch %s in data market %s to finalizer queue in Redis: %v", i+1, epochID.String(), dataMarketAddress, err)
+			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+			log.Error(errMsg)
 		}
 
 		// Serialize the batch details to JSON
-		batchJsonData, err := json.Marshal(batch)
+		batchJSONData, err := json.Marshal(batch)
 		if err != nil {
-			log.Fatalf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+			log.Errorf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
 		}
 
 		// Convert the batch ID to a big integer
 		batchID := big.NewInt(int64(i + 1))
 
 		// Store the batch details with a key generated from dataMarketAddress, epochID, and batchID
-		if err := redis.StoreBatchDetails(context.Background(), dataMarketAddress, epochID.String(), batchID.String(), string(batchJsonData)); err != nil {
+		if err := redis.StoreBatchDetails(context.Background(), dataMarketAddress, epochID.String(), batchID.String(), string(batchJSONData)); err != nil {
 			log.Errorf("Failed to store details for batch %d of epoch %s in data market %s: %v", batchID.Int64(), epochID.String(), dataMarketAddress, err)
 			continue
 		}
