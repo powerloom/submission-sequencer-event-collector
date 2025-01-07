@@ -2,8 +2,11 @@ package prost
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"submission-sequencer-collector/config"
+	"submission-sequencer-collector/pkgs"
+	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
@@ -44,7 +47,7 @@ func StartFetchingBlocks() {
 			}
 
 			if block == nil {
-				log.Errorln("Received nil block for number: ", blockNum)
+				log.Errorf("Received nil block for number: %d", blockNum)
 				continue
 			}
 
@@ -85,7 +88,9 @@ func fetchBlock(blockNum *big.Int) (*types.Block, error) {
 
 	// Retry fetching the block with a backoff strategy
 	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
-		log.Errorln("Error fetching block after retries: ", err)
+		errMsg := fmt.Sprintf("Failed to fetch block %v after retries: %s", blockNum, err.Error())
+		clients.SendFailureNotification(pkgs.StartFetchingBlocks, errMsg, time.Now().String(), "High")
+		log.Error(errMsg)
 		return nil, err
 	}
 

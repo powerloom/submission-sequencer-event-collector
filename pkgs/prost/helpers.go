@@ -35,8 +35,9 @@ func constructProjectMap(submissionKeys []string) map[string][]string {
 	for _, submissionKey := range submissionKeys {
 		parts := strings.Split(submissionKey, ".")
 		if len(parts) != 4 {
-			log.Errorln("Improper submission key stored in Redis: ", submissionKey)
-			clients.SendFailureNotification(pkgs.ConstructProjectMap, fmt.Sprintf("Improper submission key stored in Redis: %s", submissionKey), time.Now().String(), "High")
+			errMsg := fmt.Sprintf("Improper submission key stored in Redis: %s", submissionKey)
+			clients.SendFailureNotification(pkgs.ConstructProjectMap, errMsg, time.Now().String(), "High")
+			log.Error(errMsg)
 			continue // skip malformed entries
 		}
 
