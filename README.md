@@ -7,6 +7,7 @@
   - [Batch Submission](#batch-submission)
 - [Architecture](#architecture)
 - [On-Chain Updates](#on-chain-updates-via-relayer)
+- [Update Swagger Documentation](#update-swagger-documentation)
 - [APIs](#apis)
     - [`/totalSubmissions`](#totalsubmissions)
     - [`/eligibleNodesCount`](#eligiblenodescount)
@@ -16,7 +17,9 @@
     - [`/discardedSubmissions`](#discardedsubmissions)
     - [`/lastSimulatedSubmission`](#lastsimulatedsubmission)
     - [`/lastSnapshotSubmission`](#lastsnapshotsubmission)
-- [Update Swagger Documentation](#update-swagger-documentation)
+- [Scripts](#scripts)
+  - [`build`](#build)
+  - [`generate-swagger`](#generate-swagger)
 - [Find us](#find-us)
 
 ## Overview
@@ -388,34 +391,62 @@ Retrieves the last time a snapshot submission against a released epoch was recei
 
 ## Update Swagger Documentation
 
-Here are the steps to update existing swagger documentation:
+### Option 1: Using the Script (Recommended)
+Run our automated script to update the Swagger documentation:
+```bash
+./generate-swagger.sh
+```
 
-1) **Delete the existing docs folder**
-  
-      Navigate to the `pkgs/service/` directory and delete the current docs folder.
+### Option 2: Manual Update
+If you prefer to update manually, follow these steps:
 
-2) **Navigate to the service folder**
+1. **Check Swag Installation**
 
-    Use the following command to move into the service directory under `pkgs` folder:
     ```bash
-    cd pkgs/service/
+    swag --version
+    ```
+    If not installed:
+    ```bash
+    go install github.com/swaggo/swag/cmd/swag@latest
+    export PATH=$PATH:$(go env GOPATH)/bin
     ```
 
-3) **Generate new Swagger docs**
-
-    Run the following command to generate a new docs folder:
+2. **Generate Swagger Docs**
     ```bash
-    swag init -g api.go
+    swag init -g pkgs/service/api.go -o pkgs/service/docs
     ```
 
-4) **Import the updated docs folder**
+3. **Verify Import**
+    
+    Ensure this line exists in your `api.go` file:
+      ```go
+      import _ "submission-sequencer-collector/pkgs/service/docs"
+      ```
 
-    Add the following line to the import section of `api.go` file:
-    ```bash
-    _ "submission-sequencer-collector/pkgs/service/docs"
-    ```
+## Scripts
 
+### `build`
 
+This script handles the complete build process:
+1. Builds the project binary
+2. Runs all unit tests
+
+To run the script:
+```bash
+./build.sh
+```
+
+### `generate-swagger`
+
+This script automates the process of updating Swagger documentation:
+1. Check for swag installation
+2. Generate new Swagger documentation
+3. Build the project to verify changes
+
+To run the script:
+```bash
+./generate-swagger.sh
+```
 
 ## Find us
 
