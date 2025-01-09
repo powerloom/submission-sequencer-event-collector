@@ -232,7 +232,7 @@ func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
 // @Produce json
 // @Param request body SubmissionsRequest true "Submissions request payload"
 // @Success 200 {object} Response[ResponseArray[DailySubmissions]]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, invalid slotID or invalid data market address)"
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1 or past days > current day, invalid slotID or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Router /totalSubmissions [post]
 func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +278,12 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentDay := new(big.Int).Set(day)
+
+	if request.PastDays > int(currentDay.Int64()) {
+		http.Error(w, fmt.Sprintf("Past days cannot exceed the current day (%d)", currentDay.Int64()), http.StatusBadRequest)
+		return
+	}
+
 	submissionsResponse := make([]DailySubmissions, request.PastDays)
 
 	var wg sync.WaitGroup
