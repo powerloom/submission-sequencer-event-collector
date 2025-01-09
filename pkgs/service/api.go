@@ -457,15 +457,14 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
 		return
 	}
-	currentDay := new(big.Int).Set(day)
 
 	if request.Day < 1 {
 		http.Error(w, "Day must be greater than or equal to 1", http.StatusBadRequest)
 		return
 	}
 
-	if int64(request.Day) > currentDay.Int64() {
-		http.Error(w, fmt.Sprintf("Day must not exceed the current day (%d)", currentDay.Int64()), http.StatusBadRequest)
+	if int64(request.Day) > day.Int64() {
+		http.Error(w, fmt.Sprintf("Day must not exceed the current day (%d)", day.Int64()), http.StatusBadRequest)
 		return
 	}
 
