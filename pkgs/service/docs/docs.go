@@ -179,6 +179,12 @@ const docTemplate = `{
                 "summary": "Get eligible nodes count for past days",
                 "parameters": [
                     {
+                        "type": "boolean",
+                        "description": "Set to true to include slotIDs in the response",
+                        "name": "includeSlotDetails",
+                        "in": "query"
+                    },
+                    {
                         "description": "Eligible nodes count past days payload",
                         "name": "request",
                         "in": "body",

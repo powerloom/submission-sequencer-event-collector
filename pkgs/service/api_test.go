@@ -187,27 +187,30 @@ func TestHandleEligibleNodesCountPastDays(t *testing.T) {
 	redis.AddToSet(context.Background(), redis.EligibleNodesByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1"), slotIDsForDay1...)
 
 	tests := []struct {
-		name       string
-		body       string
-		statusCode int
-		response   []EligibleNodes
+		name        string
+		body        string
+		queryParams string
+		statusCode  int
+		response    []EligibleNodes
 	}{
 		{
-			name:       "Valid token, past days 1",
-			body:       `{"token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
+			name:        "Valid token, past days 1, includeSlotDetails=true",
+			body:        `{"token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			queryParams: "?includeSlotDetails=true",
+			statusCode:  http.StatusOK,
 			response: []EligibleNodes{
 				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
 			},
 		},
 		{
-			name:       "Valid token, past days 3",
-			body:       `{"token": "valid-token", "pastDays": 3, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
+			name:        "Valid token, past days 3, includeSlotDetails=false",
+			body:        `{"token": "valid-token", "pastDays": 3, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			queryParams: "?includeSlotDetails=false",
+			statusCode:  http.StatusOK,
 			response: []EligibleNodes{
-				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
-				{Day: 2, Count: 3, SlotIDs: slotIDsForDay2},
-				{Day: 1, Count: 3, SlotIDs: slotIDsForDay1},
+				{Day: 3, Count: 3, SlotIDs: []string{}},
+				{Day: 2, Count: 3, SlotIDs: []string{}},
+				{Day: 1, Count: 3, SlotIDs: []string{}},
 			},
 		},
 		{
@@ -232,7 +235,7 @@ func TestHandleEligibleNodesCountPastDays(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("POST", "/eligibleNodesCountPastDays", strings.NewReader(tt.body))
+			req, err := http.NewRequest("POST", "/eligibleNodesCountPastDays"+tt.queryParams, strings.NewReader(tt.body))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -298,7 +301,7 @@ func TestHandleEligibleNodesCount(t *testing.T) {
 			body:        `{"token": "valid-token", "day": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			queryParams: "?includeSlotDetails=false",
 			statusCode:  http.StatusOK,
-			response:    EligibleNodes{Day: 1, Count: 3},
+			response:    EligibleNodes{Day: 1, Count: 3, SlotIDs: []string{}},
 		},
 		{
 			name:       "Invalid token",
