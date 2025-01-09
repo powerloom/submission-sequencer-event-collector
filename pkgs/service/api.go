@@ -330,7 +330,7 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 // @Param includeSlotDetails query bool false "Set to true to include slotIDs in the response"
 // @Param request body EligibleNodesPastDaysRequest true "Eligible nodes count past days payload"
 // @Success 200 {object} Response[ResponseArray[EligibleNodes]]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1 or invalid data market address)"
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1 or past days > current day, invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Router /eligibleNodesCountPastDays [post]
 func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
@@ -370,6 +370,13 @@ func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentDay := new(big.Int).Set(day)
+
+	// Validate past days does not exceed the current day
+	if request.PastDays > int(currentDay.Int64()) {
+		http.Error(w, fmt.Sprintf("Past days cannot exceed the current day (%d)", currentDay.Int64()), http.StatusBadRequest)
+		return
+	}
+
 	eligibleNodesResponse := make([]EligibleNodes, request.PastDays)
 
 	// Get the includeSlotDetails query parameter value
