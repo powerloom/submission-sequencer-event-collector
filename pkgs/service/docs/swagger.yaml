@@ -52,12 +52,19 @@ definitions:
           type: string
         type: array
     type: object
-  service.EligibleNodesRequest:
+  service.EligibleNodesCountRequest:
     properties:
       dataMarketAddress:
         type: string
-      epochID:
+      day:
         type: integer
+      token:
+        type: string
+    type: object
+  service.EligibleNodesPastDaysRequest:
+    properties:
+      dataMarketAddress:
+        type: string
       pastDays:
         type: integer
       token:
@@ -117,6 +124,13 @@ definitions:
     properties:
       response:
         $ref: '#/definitions/service.DiscardedSubmissionsAPIResponse'
+      success:
+        type: boolean
+    type: object
+  service.InfoType-service_EligibleNodes:
+    properties:
+      response:
+        $ref: '#/definitions/service.EligibleNodes'
       success:
         type: boolean
     type: object
@@ -183,6 +197,13 @@ definitions:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse'
+      requestID:
+        type: string
+    type: object
+  service.Response-service_EligibleNodes:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_EligibleNodes'
       requestID:
         type: string
     type: object
@@ -337,16 +358,53 @@ paths:
     post:
       consumes:
       - application/json
-      description: Retrieves the total count of eligible nodes along with their corresponding
-        slotIDs for a specified data market address and epochID across a specified
-        number of past days
+      description: Retrieves the total count of eligible nodes and optionally their
+        corresponding slotIDs (controlled by the includeSlotDetails query param) for
+        a specified data market address and day
       parameters:
+      - description: Set to true to include slotIDs in the response
+        in: query
+        name: includeSlotDetails
+        type: boolean
       - description: Eligible nodes count payload
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/service.EligibleNodesRequest'
+          $ref: '#/definitions/service.EligibleNodesCountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_EligibleNodes'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., day < 1 or day
+            > current day, invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get eligible nodes count for a specific day
+      tags:
+      - Eligible Nodes
+  /eligibleNodesCountPastDays:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the total count of eligible nodes along with their corresponding
+        slotIDs for a specified data market address across a specified number of past
+        days
+      parameters:
+      - description: Eligible nodes count past days payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.EligibleNodesPastDaysRequest'
       produces:
       - application/json
       responses:
@@ -355,17 +413,17 @@ paths:
           schema:
             $ref: '#/definitions/service.Response-service_ResponseArray-service_EligibleNodes'
         "400":
-          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
-            missing or invalid epochID, or invalid data market address)'
+          description: 'Bad Request: Invalid input parameters (e.g., past days < 1
+            or invalid data market address)'
           schema:
             type: string
         "401":
           description: 'Unauthorized: Incorrect token'
           schema:
             type: string
-      summary: Get eligible nodes count
+      summary: Get eligible nodes count for past days
       tags:
-      - Eligible Nodes Count
+      - Eligible Nodes
   /eligibleSlotSubmissionCount:
     post:
       consumes:

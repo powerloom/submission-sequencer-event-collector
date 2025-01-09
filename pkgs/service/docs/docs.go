@@ -114,7 +114,7 @@ const docTemplate = `{
         },
         "/eligibleNodesCount": {
             "post": {
-                "description": "Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address and epochID across a specified number of past days",
+                "description": "Retrieves the total count of eligible nodes and optionally their corresponding slotIDs (controlled by the includeSlotDetails query param) for a specified data market address and day",
                 "consumes": [
                     "application/json"
                 ],
@@ -122,17 +122,69 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Eligible Nodes Count"
+                    "Eligible Nodes"
                 ],
-                "summary": "Get eligible nodes count",
+                "summary": "Get eligible nodes count for a specific day",
                 "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Set to true to include slotIDs in the response",
+                        "name": "includeSlotDetails",
+                        "in": "query"
+                    },
                     {
                         "description": "Eligible nodes count payload",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/service.EligibleNodesRequest"
+                            "$ref": "#/definitions/service.EligibleNodesCountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_EligibleNodes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., day \u003c 1 or day \u003e current day, invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/eligibleNodesCountPastDays": {
+            "post": {
+                "description": "Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address across a specified number of past days",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Eligible Nodes"
+                ],
+                "summary": "Get eligible nodes count for past days",
+                "parameters": [
+                    {
+                        "description": "Eligible nodes count past days payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.EligibleNodesPastDaysRequest"
                         }
                     }
                 ],
@@ -144,7 +196,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1, missing or invalid epochID, or invalid data market address)",
+                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1 or invalid data market address)",
                         "schema": {
                             "type": "string"
                         }
@@ -483,14 +535,25 @@ const docTemplate = `{
                 }
             }
         },
-        "service.EligibleNodesRequest": {
+        "service.EligibleNodesCountRequest": {
             "type": "object",
             "properties": {
                 "dataMarketAddress": {
                     "type": "string"
                 },
-                "epochID": {
+                "day": {
                     "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.EligibleNodesPastDaysRequest": {
+            "type": "object",
+            "properties": {
+                "dataMarketAddress": {
+                    "type": "string"
                 },
                 "pastDays": {
                     "type": "integer"
@@ -583,6 +646,17 @@ const docTemplate = `{
             "properties": {
                 "response": {
                     "$ref": "#/definitions/service.DiscardedSubmissionsAPIResponse"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "service.InfoType-service_EligibleNodes": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "$ref": "#/definitions/service.EligibleNodes"
                 },
                 "success": {
                     "type": "boolean"
@@ -686,6 +760,17 @@ const docTemplate = `{
             "properties": {
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_DiscardedSubmissionsAPIResponse"
+                },
+                "requestID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.Response-service_EligibleNodes": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_EligibleNodes"
                 },
                 "requestID": {
                     "type": "string"
