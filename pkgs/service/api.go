@@ -56,13 +56,6 @@ type DailySubmissions struct {
 	TotalSubmissions    int64 `json:"totalSubmissions"`
 }
 
-type EligibleNodesRequest struct {
-	Token             string `json:"token"`
-	EpochID           int    `json:"epochID"`
-	PastDays          int    `json:"pastDays"`
-	DataMarketAddress string `json:"dataMarketAddress"`
-}
-
 type SlotIDInDataMarketRequest struct {
 	Token             string `json:"token"`
 	DataMarketAddress string `json:"dataMarketAddress"`
@@ -79,6 +72,18 @@ type EpochDataMarketDayRequest struct {
 	Token             string `json:"token"`
 	Day               int    `json:"day"`
 	EpochID           int    `json:"epochID"`
+	DataMarketAddress string `json:"dataMarketAddress"`
+}
+
+type EligibleNodesCountRequest struct {
+	Day               int    `json:"day"`
+	DataMarketAddress string `json:"dataMarketAddress"`
+	Token             string `json:"token"`
+}
+
+type EligibleNodesPastDaysRequest struct {
+	Token             string `json:"token"`
+	PastDays          int    `json:"pastDays"`
 	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
@@ -316,19 +321,19 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleEligibleNodesCount godoc
-// @Summary Get eligible nodes count
-// @Description Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address and epochID across a specified number of past days
-// @Tags Eligible Nodes Count
+// handleEligibleNodesCountPastDays godoc
+// @Summary Get eligible nodes count for past days
+// @Description Retrieves the total count of eligible nodes along with their corresponding slotIDs for a specified data market address across a specified number of past days
+// @Tags Eligible Nodes
 // @Accept json
 // @Produce json
-// @Param request body EligibleNodesRequest true "Eligible nodes count payload"
+// @Param request body EligibleNodesPastDaysRequest true "Eligible nodes count past days payload"
 // @Success 200 {object} Response[ResponseArray[EligibleNodes]]
-// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1, missing or invalid epochID, or invalid data market address)"
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1 or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /eligibleNodesCount [post]
-func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
-	var request EligibleNodesRequest
+// @Router /eligibleNodesCountPastDays [post]
+func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
+	var request EligibleNodesPastDaysRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -341,12 +346,6 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 
 	if request.PastDays < 1 {
 		http.Error(w, "Past days should be at least 1", http.StatusBadRequest)
-		return
-	}
-
-	epochID := request.EpochID
-	if epochID <= 0 {
-		http.Error(w, "EpochID is missing or invalid", http.StatusBadRequest)
 		return
 	}
 
@@ -404,6 +403,94 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := Response[ResponseArray[EligibleNodes]]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleEligibleNodesCount godoc
+// @Summary Get eligible nodes count for a specific day
+// @Description Retrieves the total count of eligible nodes and optionally their corresponding slotIDs (controlled by the includeSlotDetails query param) for a specified data market address and day
+// @Tags Eligible Nodes
+// @Accept json
+// @Produce json
+// @Param includeSlotDetails query bool false "Set to true to include slotIDs in the response"
+// @Param request body EligibleNodesCountRequest true "Eligible nodes count payload"
+// @Success 200 {object} Response[EligibleNodes]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., day < 1 or day > current day, invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Router /eligibleNodesCount [post]
+func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
+	var request EligibleNodesCountRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	if err != nil {
+		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
+		return
+	}
+	currentDay := new(big.Int).Set(day)
+
+	if request.Day < 1 {
+		http.Error(w, "Day must be greater than or equal to 1", http.StatusBadRequest)
+		return
+	}
+
+	if int64(request.Day) > currentDay.Int64() {
+		http.Error(w, fmt.Sprintf("Day must not exceed the current day (%d)", currentDay.Int64()), http.StatusBadRequest)
+		return
+	}
+
+	// Fetch eligible slot IDs for the specified day
+	slotIDs := getEligibleSlotIDs(request.DataMarketAddress, new(big.Int).SetInt64(int64(request.Day)))
+
+	// Construct the response object
+	eligibleNodesResponse := EligibleNodes{
+		Day:   request.Day,
+		Count: len(slotIDs),
+	}
+
+	// Optionally retrieve slot IDs if query param is set
+	queryParams := r.URL.Query()
+	includeSlotDetails := queryParams.Get("includeSlotDetails") == "true"
+	if includeSlotDetails {
+		eligibleNodesResponse.SlotIDs = slotIDs
+	}
+
+	info := InfoType[EligibleNodes]{
+		Success:  true,
+		Response: eligibleNodesResponse,
+	}
+
+	response := Response[EligibleNodes]{
 		Info:      info,
 		RequestID: r.Context().Value("request_id").(string),
 	}
@@ -1012,6 +1099,7 @@ func StartApiServer() {
 	// Define your route handlers
 	mux.HandleFunc("/totalSubmissions", handleTotalSubmissions)
 	mux.HandleFunc("/eligibleNodesCount", handleEligibleNodesCount)
+	mux.HandleFunc("/eligibleNodesCountPastDays", handleEligibleNodesCountPastDays)
 	mux.HandleFunc("/batchCount", handleBatchCount)
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
 	mux.HandleFunc("/eligibleSlotSubmissionCount", handleEligibleSlotSubmissionCount)
