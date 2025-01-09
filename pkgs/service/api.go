@@ -327,6 +327,7 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 // @Tags Eligible Nodes
 // @Accept json
 // @Produce json
+// @Param includeSlotDetails query bool false "Set to true to include slotIDs in the response"
 // @Param request body EligibleNodesPastDaysRequest true "Eligible nodes count past days payload"
 // @Success 200 {object} Response[ResponseArray[EligibleNodes]]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., past days < 1 or invalid data market address)"
@@ -371,6 +372,10 @@ func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
 	currentDay := new(big.Int).Set(day)
 	eligibleNodesResponse := make([]EligibleNodes, request.PastDays)
 
+	// Get the includeSlotDetails query parameter value
+	queryParams := r.URL.Query()
+	includeSlotDetails := queryParams.Get("includeSlotDetails") == "true"
+
 	var wg sync.WaitGroup
 	ch := make(chan EligibleNodes, request.PastDays)
 
@@ -380,11 +385,21 @@ func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
 			slotIDs := getEligibleSlotIDs(request.DataMarketAddress, day) // Fetch eligible slot IDs for the day
-			ch <- EligibleNodes{
-				Day:     int(day.Int64()),
-				Count:   len(slotIDs),
-				SlotIDs: slotIDs,
+
+			// Construct EligibleNodes object
+			eligibleNode := EligibleNodes{
+				Day:   int(day.Int64()),
+				Count: len(slotIDs),
 			}
+
+			// Include slotIDs if query param is set
+			if includeSlotDetails {
+				eligibleNode.SlotIDs = slotIDs
+			} else {
+				eligibleNode.SlotIDs = []string{} // Set to an empty array if includeSlotDetails is false
+			}
+
+			ch <- eligibleNode
 		}(i)
 	}
 
@@ -482,6 +497,8 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 	includeSlotDetails := queryParams.Get("includeSlotDetails") == "true"
 	if includeSlotDetails {
 		eligibleNodesResponse.SlotIDs = slotIDs
+	} else {
+		eligibleNodesResponse.SlotIDs = []string{} // Set to an empty array if includeSlotDetails is false
 	}
 
 	info := InfoType[EligibleNodes]{
