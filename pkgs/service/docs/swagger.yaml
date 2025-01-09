@@ -585,8 +585,8 @@ paths:
           schema:
             $ref: '#/definitions/service.Response-service_ResponseArray-service_DailySubmissions'
         "400":
-          description: 'Bad Request: Invalid input parameters (e.g., past days < 1,
-            invalid slotID or invalid data market address)'
+          description: 'Bad Request: Invalid input parameters (e.g., past days < 1
+            or past days > current day, invalid slotID or invalid data market address)'
           schema:
             type: string
         "401":

@@ -118,6 +118,12 @@ func TestHandleTotalSubmissions(t *testing.T) {
 			response:   nil,
 		},
 		{
+			name:       "Valid token, past days greater than current day",
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": 6, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   nil,
+		},
+		{
 			name:       "Invalid token",
 			body:       `{"slotID": 1, "token": "invalid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
