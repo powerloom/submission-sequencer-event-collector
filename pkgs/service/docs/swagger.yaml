@@ -398,6 +398,10 @@ paths:
         slotIDs for a specified data market address across a specified number of past
         days
       parameters:
+      - description: Set to true to include slotIDs in the response
+        in: query
+        name: includeSlotDetails
+        type: boolean
       - description: Eligible nodes count past days payload
         in: body
         name: request
