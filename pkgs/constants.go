@@ -37,6 +37,7 @@ const (
 	EpochSubmissionsKey              = "EpochSubmissionsKey"
 	EligibleSlotSubmissionByEpochKey = "EligibleSlotSubmissionByEpochKey"
 	DiscardedSubmissionKey           = "DiscardedSubmissionKey"
+	EpochsInADay                     = "EpochsInADay"
 	ZeroCountKey                     = "ZeroCountKey"
 	LastSimulatedSubmissionKey       = "LastSimulatedSubmissionKey"
 	LastSnapshotSubmissionKey        = "LastSnapshotSubmissionKey"

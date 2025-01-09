@@ -42,6 +42,10 @@ func EpochMarkerDetails(dataMarketAddress, epochID string) string {
 	return fmt.Sprintf("%s.%s.%s", pkgs.EpochMarkerDetailsKey, strings.ToLower(dataMarketAddress), epochID)
 }
 
+func ContractStateVariableWithDataMarket(dataMarketAddress string, varName string) string {
+	return fmt.Sprintf("ProtocolState.%s.%s", dataMarketAddress, varName)
+}
+
 func SubmissionSetByHeaderKey(dataMarketAddress string, epoch uint64, header string) string {
 	return fmt.Sprintf("%s.%s.%d.%s", pkgs.CollectorKey, strings.ToLower(dataMarketAddress), epoch, header)
 }
