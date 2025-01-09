@@ -418,7 +418,7 @@ paths:
             $ref: '#/definitions/service.Response-service_ResponseArray-service_EligibleNodes'
         "400":
           description: 'Bad Request: Invalid input parameters (e.g., past days < 1
-            or invalid data market address)'
+            or past days > current day, invalid data market address)'
           schema:
             type: string
         "401":

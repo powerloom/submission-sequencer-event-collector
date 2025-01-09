@@ -202,7 +202,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1 or invalid data market address)",
+                        "description": "Bad Request: Invalid input parameters (e.g., past days \u003c 1 or past days \u003e current day, invalid data market address)",
                         "schema": {
                             "type": "string"
                         }
