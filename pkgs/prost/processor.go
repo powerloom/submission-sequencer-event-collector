@@ -562,8 +562,15 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 		return err
 	}
 
+	// Fetch epochs in a day for the specified data market address from Redis
+	epochsInADay, err := redis.GetEpochsInADay(context.Background(), dataMarketAddress)
+	if err != nil {
+		log.Errorf("Failed to fetch epochs in a day for data market %s: %v", dataMarketAddress, err)
+		return err
+	}
+
 	// Calculate expiration time
-	expirationTime := getExpirationTime(epochID.Int64(), daySize.Int64())
+	expirationTime := getExpirationTime(epochID.Int64(), daySize.Int64(), epochsInADay.Int64())
 
 	// Set the current day in Redis with the calculated expiration duration
 	if err := redis.SetWithExpiration(context.Background(), redis.GetCurrentDayKey(dataMarketAddress), currentDay.String(), time.Until(expirationTime)); err != nil {
