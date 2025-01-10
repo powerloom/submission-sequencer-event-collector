@@ -118,6 +118,12 @@ func TestHandleTotalSubmissions(t *testing.T) {
 			response:   nil,
 		},
 		{
+			name:       "Valid token, past days greater than current day",
+			body:       `{"slotID": 1, "token": "valid-token", "pastDays": 6, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   nil,
+		},
+		{
 			name:       "Invalid token",
 			body:       `{"slotID": 1, "token": "invalid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
@@ -169,7 +175,7 @@ func TestHandleTotalSubmissions(t *testing.T) {
 	}
 }
 
-func TestHandleEligibleNodeCount(t *testing.T) {
+func TestHandleEligibleNodesCountPastDays(t *testing.T) {
 	// Set the authentication read token
 	config.SettingsObj.AuthReadToken = "valid-token"
 
@@ -187,50 +193,53 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 	redis.AddToSet(context.Background(), redis.EligibleNodesByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1"), slotIDsForDay1...)
 
 	tests := []struct {
-		name       string
-		body       string
-		statusCode int
-		response   []EligibleNodes
+		name        string
+		body        string
+		queryParams string
+		statusCode  int
+		response    []EligibleNodes
 	}{
 		{
-			name:       "Valid token, past days 1",
-			body:       `{"epochID": 100, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
+			name:        "Valid token, past days 1, includeSlotDetails=true",
+			body:        `{"token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			queryParams: "?includeSlotDetails=true",
+			statusCode:  http.StatusOK,
 			response: []EligibleNodes{
 				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
 			},
 		},
 		{
-			name:       "Valid token, past days 3",
-			body:       `{"epochID": 100, "token": "valid-token", "pastDays": 3, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusOK,
+			name:        "Valid token, past days 3, includeSlotDetails=false",
+			body:        `{"token": "valid-token", "pastDays": 3, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			queryParams: "?includeSlotDetails=false",
+			statusCode:  http.StatusOK,
 			response: []EligibleNodes{
-				{Day: 3, Count: 3, SlotIDs: slotIDsForDay3},
-				{Day: 2, Count: 3, SlotIDs: slotIDsForDay2},
-				{Day: 1, Count: 3, SlotIDs: slotIDsForDay1},
+				{Day: 3, Count: 3, SlotIDs: []string{}},
+				{Day: 2, Count: 3, SlotIDs: []string{}},
+				{Day: 1, Count: 3, SlotIDs: []string{}},
 			},
 		},
 		{
 			name:       "Valid token, negative past days",
-			body:       `{"epochID": 100, "token": "valid-token", "pastDays": -1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"token": "valid-token", "pastDays": -1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   nil,
+		},
+		{
+			name:       "Valid token, past days greater than current day",
+			body:       `{"token": "valid-token", "pastDays": 4, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
 		{
 			name:       "Invalid token",
-			body:       `{"epochID": 100, "token": "invalid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			body:       `{"token": "invalid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
 			statusCode: http.StatusUnauthorized,
 			response:   nil,
 		},
 		{
-			name:       "Invalid EpochID",
-			body:       `{"epochID": -1, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
-			statusCode: http.StatusBadRequest,
-			response:   nil,
-		},
-		{
 			name:       "Invalid Data Market Address",
-			body:       `{"epochID": 100, "token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			body:       `{"token": "valid-token", "pastDays": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
 			response:   nil,
 		},
@@ -238,7 +247,97 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("POST", "/eligibleNodesCount", strings.NewReader(tt.body))
+			req, err := http.NewRequest("POST", "/eligibleNodesCountPastDays"+tt.queryParams, strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(handleEligibleNodesCountPastDays)
+			testHandler := RequestMiddleware(handler)
+			testHandler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+			t.Log("Response Body:", responseBody)
+
+			assert.Equal(t, tt.statusCode, rr.Code)
+
+			if tt.statusCode == http.StatusOK {
+				var response struct {
+					Info struct {
+						Success  bool            `json:"success"`
+						Response []EligibleNodes `json:"response"`
+					} `json:"info"`
+					RequestID string `json:"requestID"`
+				}
+
+				err := json.NewDecoder(rr.Body).Decode(&response)
+				assert.NoError(t, err)
+
+				err = json.Unmarshal([]byte(responseBody), &response)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.response, response.Info.Response)
+			}
+		})
+	}
+}
+
+func TestHandleEligibleNodesCount(t *testing.T) {
+	// Set the authentication read token
+	config.SettingsObj.AuthReadToken = "valid-token"
+
+	// Set the current day
+	redis.Set(context.Background(), redis.GetCurrentDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"), "3")
+
+	// Set eligible slotIDs
+	slotIDs := []string{"slot1", "slot2", "slot3"}
+	redis.AddToSet(context.Background(), redis.EligibleNodesByDayKey("0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c", "1"), slotIDs...)
+
+	tests := []struct {
+		name        string
+		body        string
+		queryParams string
+		statusCode  int
+		response    EligibleNodes
+	}{
+		{
+			name:        "Valid token, day 1, includeSlotDetails=true",
+			body:        `{"token": "valid-token", "day": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			queryParams: "?includeSlotDetails=true",
+			statusCode:  http.StatusOK,
+			response:    EligibleNodes{Day: 1, Count: 3, SlotIDs: slotIDs},
+		},
+		{
+			name:        "Valid token, day 1, includeSlotDetails=false",
+			body:        `{"token": "valid-token", "day": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			queryParams: "?includeSlotDetails=false",
+			statusCode:  http.StatusOK,
+			response:    EligibleNodes{Day: 1, Count: 3, SlotIDs: []string{}},
+		},
+		{
+			name:       "Invalid token",
+			body:       `{"token": "invalid-token", "day": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusUnauthorized,
+			response:   EligibleNodes{},
+		},
+		{
+			name:       "Invalid day",
+			body:       `{"token": "valid-token", "day": 4, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   EligibleNodes{},
+		},
+		{
+			name:       "Invalid Data Market Address",
+			body:       `{"token": "valid-token", "day": 1, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
+			statusCode: http.StatusBadRequest,
+			response:   EligibleNodes{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/eligibleNodesCount"+tt.queryParams, strings.NewReader(tt.body))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -257,8 +356,8 @@ func TestHandleEligibleNodeCount(t *testing.T) {
 			if tt.statusCode == http.StatusOK {
 				var response struct {
 					Info struct {
-						Success  bool            `json:"success"`
-						Response []EligibleNodes `json:"response"`
+						Success  bool          `json:"success"`
+						Response EligibleNodes `json:"response"`
 					} `json:"info"`
 					RequestID string `json:"requestID"`
 				}
