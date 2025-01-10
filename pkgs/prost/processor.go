@@ -388,6 +388,7 @@ func triggerBatchPreparation(dataMarketAddress string, epochID *big.Int, startBl
 func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarketAddress string, submissionKeys []string) error {
 	// Fetch the current day
 	currentDay, err := FetchCurrentDay(common.HexToAddress(dataMarketAddress))
+	log.Infof("Current day for data market %s: %s", dataMarketAddress, currentDay.String())
 	if err != nil {
 		log.Errorf("Failed to fetch current day for data market %s: %v", dataMarketAddress, err)
 		return err
@@ -604,6 +605,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 func handleDayTransition(dataMarketAddress string, currentDay, epochID *big.Int) error {
 	// Fetch the last known day value from Redis
 	lastKnownDay, err := redis.Get(context.Background(), redis.LastKnownDay(dataMarketAddress))
+	log.Infof("Last known day for data market %s: %s", dataMarketAddress, lastKnownDay)
 	if err != nil {
 		log.Errorf("Error fetching last known day value for data market %s from Redis: %v", dataMarketAddress, err)
 		return err
