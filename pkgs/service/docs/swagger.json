@@ -4,8 +4,8 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "This API handles submissions and provides Swagger documentation",
-        "title": "My API Documentation",
+        "description": "Offers comprehensive documentation of endpoints for seamless interaction with the sequencer, enabling efficient data retrieval.",
+        "title": "Sequencer API Documentation",
         "termsOfService": "http://yourterms.com",
         "contact": {
             "name": "API Support",

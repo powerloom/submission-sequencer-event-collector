@@ -284,9 +284,10 @@ info:
     email: support@example.com
     name: API Support
     url: http://www.yoursupport.com
-  description: This API handles submissions and provides Swagger documentation
+  description: Offers comprehensive documentation of endpoints for seamless interaction
+    with the sequencer, enabling efficient data retrieval.
   termsOfService: http://yourterms.com
-  title: My API Documentation
+  title: Sequencer API Documentation
   version: "1.0"
 paths:
   /batchCount:

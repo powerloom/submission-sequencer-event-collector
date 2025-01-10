@@ -28,7 +28,6 @@ var (
 	Instance            *contract.Contract
 	ContractABI         abi.ABI
 	NodeCount           *big.Int
-	epochsInADay        = 720
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
 	BufferEpochs        = 5
 )
@@ -134,7 +133,7 @@ func LoadContractStateVariables() {
 	}
 }
 
-func getExpirationTime(epochID, daySize int64) time.Time {
+func getExpirationTime(epochID, daySize, epochsInADay int64) time.Time {
 	// DAY_SIZE in microseconds
 	updatedDaySize := time.Duration(daySize) * time.Microsecond
 
@@ -142,7 +141,7 @@ func getExpirationTime(epochID, daySize int64) time.Time {
 	epochDuration := updatedDaySize / time.Duration(epochsInADay)
 
 	// Calculate the number of epochs left for the day
-	remainingEpochs := epochID % int64(epochsInADay)
+	remainingEpochs := epochID % epochsInADay
 
 	// Calculate the expiration duration
 	expirationDuration := epochDuration * time.Duration(remainingEpochs)

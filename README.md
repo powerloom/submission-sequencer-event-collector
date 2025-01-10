@@ -7,6 +7,7 @@
   - [Batch Submission](#batch-submission)
 - [Architecture](#architecture)
 - [On-Chain Updates](#on-chain-updates-via-relayer)
+- [Update Swagger Documentation](#update-swagger-documentation)
 - [APIs](#apis)
     - [`/totalSubmissions`](#totalsubmissions)
     - [`/eligibleNodesCount`](#eligiblenodescount)
@@ -14,6 +15,11 @@
     - [`/epochSubmissionDetails`](#epochsubmissiondetails)
     - [`/eligibleSlotSubmissionCount`](#eligibleslotsubmissioncount)
     - [`/discardedSubmissions`](#discardedsubmissions)
+    - [`/lastSimulatedSubmission`](#lastsimulatedsubmission)
+    - [`/lastSnapshotSubmission`](#lastsnapshotsubmission)
+- [Scripts](#scripts)
+  - [`build`](#build)
+  - [`generate-swagger`](#generate-swagger)
 - [Find us](#find-us)
 
 ## Overview
@@ -333,6 +339,114 @@ Retrieves the discarded submissions details within a specific epoch for a given 
 }
 ```
 
+#### `/lastSimulatedSubmission`
+
+Retrieves the last time a simulation submission was received for a specific slotID and data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "slotID": 1,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "success": true,
+    "response": "2025-01-06T17:22:11+05:30"
+  },
+  "requestID": "requestID"
+}
+```
+
+#### `/lastSnapshotSubmission`
+
+Retrieves the last time a snapshot submission against a released epoch was received for a specific slotID and data market address.
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "slotID": 1,
+  "token": "valid-token"
+}
+```
+
+**Response:**
+
+```json
+{
+  "info": {
+    "success": true,
+    "response": "2025-01-06T17:22:11+05:30"
+  },
+  "requestID": "requestID"
+}
+```
+
+## Update Swagger Documentation
+
+### Option 1: Using the Script (Recommended)
+Run our automated script to update the Swagger documentation:
+```bash
+./generate-swagger.sh
+```
+
+### Option 2: Manual Update
+If you prefer to update manually, follow these steps:
+
+1. **Check Swag Installation**
+
+    ```bash
+    swag --version
+    ```
+    If not installed:
+    ```bash
+    go install github.com/swaggo/swag/cmd/swag@latest
+    export PATH=$PATH:$(go env GOPATH)/bin
+    ```
+
+2. **Generate Swagger Docs**
+    ```bash
+    swag init -g pkgs/service/api.go -o pkgs/service/docs
+    ```
+
+3. **Verify Import**
+    
+    Ensure this line exists in your `api.go` file:
+      ```go
+      import _ "submission-sequencer-collector/pkgs/service/docs"
+      ```
+
+## Scripts
+
+### `build`
+
+This script handles the complete build process:
+1. Builds the project binary
+2. Runs all unit tests
+
+To run the script:
+```bash
+./build.sh
+```
+
+### `generate-swagger`
+
+This script automates the process of updating Swagger documentation:
+1. Check for swag installation
+2. Generate new Swagger documentation
+3. Build the project to verify changes
+
+To run the script:
+```bash
+./generate-swagger.sh
+```
 
 ## Find us
 

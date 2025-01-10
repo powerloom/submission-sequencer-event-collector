@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strconv"
 	"submission-sequencer-collector/config"
+	"submission-sequencer-collector/pkgs"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -210,4 +211,23 @@ func StoreBatchDetails(ctx context.Context, dataMarketAddress, epochID, batchID,
 	}
 
 	return nil
+}
+
+func GetEpochsInADay(ctx context.Context, dataMarketAddress string) (*big.Int, error) {
+	// Construct the key using ContractStateVariableWithDataMarket pattern
+	key := ContractStateVariableWithDataMarket(dataMarketAddress, pkgs.EpochsInADay)
+
+	// Fetch epochs in a day directly as a string value
+	epochsInADayStr, err := RedisClient.Get(ctx, key).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch epochs in a day for data market %s: %s", dataMarketAddress, err)
+	}
+
+	// Convert the epochs in a day from string to *big.Int
+	epochsInADay, ok := new(big.Int).SetString(epochsInADayStr, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid epochs in a day value for data market %s: %s", dataMarketAddress, epochsInADayStr)
+	}
+
+	return epochsInADay, nil
 }

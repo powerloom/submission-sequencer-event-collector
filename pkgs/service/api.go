@@ -30,9 +30,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// @title My API Documentation
+// @title Sequencer API Documentation
 // @version 1.0
-// @description This API handles submissions and provides Swagger documentation
+// @description Offers comprehensive documentation of endpoints for seamless interaction with the sequencer, enabling efficient data retrieval.
 // @termsOfService http://yourterms.com
 
 // @contact.name API Support
@@ -1029,6 +1029,7 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	if request.Token != config.SettingsObj.AuthReadToken {
 		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
 		return
