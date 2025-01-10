@@ -96,7 +96,6 @@ func fetchEligibleSlotIDs(dataMarketAddress, day string) (int, []string) {
 func startPeriodicCleanupRoutine(ctx context.Context, currentBlock *types.Block) {
 	// Get the current block number
 	currentBlockNum := currentBlock.Number().Int64()
-	log.Info("⏰ Periodic cleanup routine started")
 
 	ticker := time.NewTicker(10 * time.Minute) // Configurable interval
 	defer ticker.Stop()
@@ -108,6 +107,7 @@ func startPeriodicCleanupRoutine(ctx context.Context, currentBlock *types.Block)
 			return
 		case <-ticker.C:
 			// Start the periodic cleanup for stale epoch markers
+			log.Debug("Starting periodic cleanup for stale epoch markers...")
 			startPeriodicCleanup(currentBlockNum)
 		}
 	}
@@ -124,7 +124,7 @@ func startPeriodicCleanup(currentBlockNum int64) {
 		go func(dataMarketAddress string) {
 			defer wg.Done()
 
-			log.Infof("🧹 Starting cleanup for stale epoch markers for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
+			log.Infof("🏁 Starting cleanup for stale epoch markers for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
 
 			epochMarkerKeys, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
 			if err != nil {
@@ -149,13 +149,9 @@ func startPeriodicCleanup(currentBlockNum int64) {
 				if currentBlockNum > epochMarkerDetails.SubmissionLimitBlockNumber {
 					log.Infof("🗑️ Removing stale epoch marker key %s for data market %s", epochMarkerKey, dataMarketAddress)
 
-					if err := redis.RedisClient.SRem(context.Background(), redis.EpochMarkerSet(dataMarketAddress), epochMarkerKey).Err(); err != nil {
-						log.Errorf("Failed to remove epoch marker key %s from Redis set during cleanup: %s", epochMarkerKey, err)
-						continue
-					}
-
-					if err := redis.RedisClient.Del(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Err(); err != nil {
-						log.Errorf("Failed to delete epoch marker details for key %s during cleanup: %s", epochMarkerKey, err)
+					// Remove the epochID and its details from Redis
+					if err := redis.RemoveEpochFromRedis(context.Background(), dataMarketAddress, epochMarkerKey); err != nil {
+						log.Errorf("Failed to remove epoch %s from Redis for data market %s during cleanup: %v", epochMarkerKey, dataMarketAddress, err)
 						continue
 					}
 
