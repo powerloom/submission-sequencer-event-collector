@@ -92,6 +92,7 @@ type DiscardedSubmissionsByDayRequest struct {
 	SlotID            int    `json:"slotID"`
 	DataMarketAddress string `json:"dataMarketAddress"`
 	Token             string `json:"token"`
+	Page              int    `json:"page"`
 }
 
 type EligibleNodes struct {
@@ -155,6 +156,8 @@ type DiscardedSubmissionByDayResponse struct {
 type DiscardedSubmissionDetailsByDayAPIResponse struct {
 	SlotID               int                                `json:"slotID"`
 	DiscardedSubmissions []DiscardedSubmissionByDayResponse `json:"discardedSubmissions"`
+	TotalPages           int                                `json:"totalPages"`
+	CurrentPage          int                                `json:"currentPage"`
 }
 
 type DiscardedSubmissionDetails struct {
@@ -969,7 +972,7 @@ func handleDiscardedSubmissionsByEpoch(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} Response[DiscardedSubmissionDetailsByDayAPIResponse]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID, invalid day or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /handleDiscardedSubmissionsByDay [post]
+// @Router /discardedSubmissionsByDay [post]
 func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 	var request DiscardedSubmissionsByDayRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -1033,7 +1036,11 @@ func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the slotID map
-	slotIDMap := results[strconv.Itoa(request.SlotID)]
+	slotIDMap, exists := results[strconv.Itoa(request.SlotID)]
+	if !exists || slotIDMap == "" {
+		http.Error(w, fmt.Sprintf("No discarded submissions found for slotID %d", request.SlotID), http.StatusNotFound)
+		return
+	}
 
 	// Deserialize the JSON string into DiscardedSubmissionByProject
 	var details DiscardedSubmissionByProject
@@ -1052,10 +1059,31 @@ func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Pagination logic
+	page := request.Page
+	if page < 1 {
+		page = 1
+	}
+
+	pageSize := 50 // Fixed page size
+	totalItems := len(responseProjects)
+	totalPages := (totalItems + pageSize - 1) / pageSize
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > totalItems {
+		start, end = 0, 0 // No items for this page
+	} else if end > totalItems {
+		end = totalItems
+	}
+
+	paginatedProjects := responseProjects[start:end]
+
 	// Construct the final API response
 	apiResponse := DiscardedSubmissionDetailsByDayAPIResponse{
 		SlotID:               request.SlotID,
-		DiscardedSubmissions: responseProjects,
+		DiscardedSubmissions: paginatedProjects,
+		TotalPages:           totalPages,
+		CurrentPage:          page,
 	}
 
 	info := InfoType[DiscardedSubmissionDetailsByDayAPIResponse]{
