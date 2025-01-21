@@ -1031,7 +1031,24 @@ func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(results) == 0 {
-		log.Errorf("No discarded submissions found for key %s\n", discardedKey)
+		info := InfoType[DiscardedSubmissionDetailsByDayAPIResponse]{
+			Success: true,
+			Response: DiscardedSubmissionDetailsByDayAPIResponse{
+				SlotID:               request.SlotID,
+				DiscardedSubmissions: []DiscardedSubmissionByDayResponse{},
+				TotalPages:           0,
+				CurrentPage:          request.Page,
+			},
+		}
+
+		response := Response[DiscardedSubmissionDetailsByDayAPIResponse]{
+			Info:      info,
+			RequestID: r.Context().Value("request_id").(string),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+
 		return
 	}
 
