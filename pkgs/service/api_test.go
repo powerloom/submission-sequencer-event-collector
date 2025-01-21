@@ -826,6 +826,12 @@ func TestHandleDiscardedSubmissionsByDay(t *testing.T) {
 			response:   DiscardedSubmissionDetailsByDayAPIResponse{},
 		},
 		{
+			name:       "Invalid Day",
+			body:       `{"slotID": 1, "token": "valid-token", "day": 0, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"}`,
+			statusCode: http.StatusBadRequest,
+			response:   DiscardedSubmissionDetailsByDayAPIResponse{},
+		},
+		{
 			name:       "Invalid Data Market Address",
 			body:       `{"slotID": 1, "token": "valid-token", "day": 5, "dataMarketAddress": "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200d"}`,
 			statusCode: http.StatusBadRequest,
