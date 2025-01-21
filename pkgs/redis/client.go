@@ -180,11 +180,11 @@ func StoreDayTransitionEpochDetails(ctx context.Context, dataMarketAddress, epoc
 func RemoveEpochFromRedis(ctx context.Context, dataMarketAddress, epochID string) error {
 	// Remove the epoch marker from the master set
 	if err := RedisClient.SRem(ctx, EpochMarkerSet(dataMarketAddress), epochID).Err(); err != nil {
-		return fmt.Errorf("failed to delete epoch %s for data market %s from Redis: %w", epochID, dataMarketAddress, err)
+		return fmt.Errorf("failed to delete epoch %s for data market %s from Redis: %v", epochID, dataMarketAddress, err)
 	}
 
 	if expireErr := RedisClient.Expire(ctx, EpochMarkerDetails(dataMarketAddress, epochID), 30*time.Minute).Err(); expireErr != nil {
-		return fmt.Errorf("failed to set expiry for epoch marker details of epoch %s, data market %s: %w", epochID, dataMarketAddress, expireErr)
+		return fmt.Errorf("failed to set expiry for epoch marker details of epoch %s, data market %s: %v", epochID, dataMarketAddress, expireErr)
 	}
 
 	return nil
