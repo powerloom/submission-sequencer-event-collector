@@ -47,11 +47,15 @@ definitions:
     type: object
   service.DiscardedSubmissionDetailsByDayAPIResponse:
     properties:
+      currentPage:
+        type: integer
       discardedSubmissions:
         items:
           $ref: '#/definitions/service.DiscardedSubmissionByDayResponse'
         type: array
       slotID:
+        type: integer
+      totalPages:
         type: integer
     type: object
   service.DiscardedSubmissionDetailsResponse:
@@ -73,6 +77,8 @@ definitions:
       dataMarketAddress:
         type: string
       day:
+        type: integer
+      page:
         type: integer
       slotID:
         type: integer
@@ -374,6 +380,38 @@ paths:
       summary: Get total batch count
       tags:
       - Batch Count
+  /discardedSubmissionsByDay:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the details of discarded submissions for a specified
+        day and slotID associated with a given data market address
+      parameters:
+      - description: Data market slotID day request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.DiscardedSubmissionsByDayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., invalid slotID,
+            invalid day or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get discarded submission details by day
+      tags:
+      - Discarded Submissions
   /discardedSubmissionsByEpoch:
     post:
       consumes:
@@ -544,38 +582,6 @@ paths:
       summary: Get epoch submission details
       tags:
       - Submissions
-  /handleDiscardedSubmissionsByDay:
-    post:
-      consumes:
-      - application/json
-      description: Retrieves the details of discarded submissions for a specified
-        day and slotID associated with a given data market address
-      parameters:
-      - description: Data market slotID day request payload
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/service.DiscardedSubmissionsByDayRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse'
-        "400":
-          description: 'Bad Request: Invalid input parameters (e.g., invalid slotID,
-            invalid day or invalid data market address)'
-          schema:
-            type: string
-        "401":
-          description: 'Unauthorized: Incorrect token'
-          schema:
-            type: string
-      summary: Get discarded submission details by day
-      tags:
-      - Discarded Submissions
   /lastSimulatedSubmission:
     post:
       consumes:

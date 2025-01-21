@@ -66,6 +66,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/discardedSubmissionsByDay": {
+            "post": {
+                "description": "Retrieves the details of discarded submissions for a specified day and slotID associated with a given data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discarded Submissions"
+                ],
+                "summary": "Get discarded submission details by day",
+                "parameters": [
+                    {
+                        "description": "Data market slotID day request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.DiscardedSubmissionsByDayRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid slotID, invalid day or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/discardedSubmissionsByEpoch": {
             "post": {
                 "description": "Retrieves the discarded submissions details within a specific epoch for a given data market address",
@@ -308,52 +354,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/handleDiscardedSubmissionsByDay": {
-            "post": {
-                "description": "Retrieves the details of discarded submissions for a specified day and slotID associated with a given data market address",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Discarded Submissions"
-                ],
-                "summary": "Get discarded submission details by day",
-                "parameters": [
-                    {
-                        "description": "Data market slotID day request payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/service.DiscardedSubmissionsByDayRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request: Invalid input parameters (e.g., invalid slotID, invalid day or invalid data market address)",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized: Incorrect token",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/lastSimulatedSubmission": {
             "post": {
                 "description": "Retrieves the last time a simulation submission was received for a given data market address and slotID",
@@ -579,6 +579,9 @@ const docTemplate = `{
         "service.DiscardedSubmissionDetailsByDayAPIResponse": {
             "type": "object",
             "properties": {
+                "currentPage": {
+                    "type": "integer"
+                },
                 "discardedSubmissions": {
                     "type": "array",
                     "items": {
@@ -586,6 +589,9 @@ const docTemplate = `{
                     }
                 },
                 "slotID": {
+                    "type": "integer"
+                },
+                "totalPages": {
                     "type": "integer"
                 }
             }
@@ -619,6 +625,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "day": {
+                    "type": "integer"
+                },
+                "page": {
                     "type": "integer"
                 },
                 "slotID": {
