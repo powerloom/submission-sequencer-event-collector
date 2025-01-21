@@ -14,7 +14,8 @@
     - [`/batchCount`](#batchcount)
     - [`/epochSubmissionDetails`](#epochsubmissiondetails)
     - [`/eligibleSlotSubmissionCount`](#eligibleslotsubmissioncount)
-    - [`/discardedSubmissions`](#discardedsubmissions)
+    - [`/discardedSubmissionsByEpoch`](#discardedsubmissionsbyepoch)
+    - [`/discardedSubmissionsByDay`](#discardedsubmissionsbyday)
     - [`/lastSimulatedSubmission`](#lastsimulatedsubmission)
     - [`/lastSnapshotSubmission`](#lastsnapshotsubmission)
 - [Scripts](#scripts)
@@ -292,7 +293,7 @@ Retrieves the submission counts of all eligible slotIDs within a specific epoch 
 }
 ```
 
-#### `/discardedSubmissions`
+#### `/discardedSubmissionsByEpoch`
 
 Retrieves the discarded submissions details within a specific epoch for a given data market address.
 
@@ -339,6 +340,50 @@ Retrieves the discarded submissions details within a specific epoch for a given 
 }
 ```
 
+#### `/discardedSubmissionsByDay`
+
+Retrieves the details of discarded submissions for a specified day and slotID associated with a given data market address.
+
+**Request:**
+
+```json
+{
+  "dataMarketAddress": "0xE88E5f64AEB483e5057645987AdDFA24A3C243GH",
+  "day": 10,
+  "slotID": 300,
+  "token": "valid-token",
+  "page": 1
+}
+```
+
+**Response:**
+
+```json
+{
+    "info": {
+        "success": true,
+        "response": {
+            "slotID": "1",
+            "discardedSubmissions": [
+                {
+                    "projectID": "projectID",
+                    "details": {
+                        "finalizedCID": "snapshotCID",
+                        "discardedSubmissionCount": 1,
+                        "discardedSubmissions": [
+                            "snapshotCID-1"
+                        ]
+                    }
+                }
+            ],
+            "totalPages": 1,
+            "currentPage": 1
+        }
+    },
+    "requestID": "requestID"
+}
+```
+
 #### `/lastSimulatedSubmission`
 
 Retrieves the last time a simulation submission was received for a specific slotID and data market address.
@@ -368,6 +413,8 @@ Retrieves the last time a simulation submission was received for a specific slot
 #### `/lastSnapshotSubmission`
 
 Retrieves the last time a snapshot submission against a released epoch was received for a specific slotID and data market address.
+
+**Request:**
 
 ```json
 {

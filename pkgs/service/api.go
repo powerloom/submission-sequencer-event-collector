@@ -87,6 +87,14 @@ type EligibleNodesPastDaysRequest struct {
 	DataMarketAddress string `json:"dataMarketAddress"`
 }
 
+type DiscardedSubmissionsByDayRequest struct {
+	Day               int    `json:"day"`
+	SlotID            int    `json:"slotID"`
+	DataMarketAddress string `json:"dataMarketAddress"`
+	Token             string `json:"token"`
+	Page              int    `json:"page"`
+}
+
 type EligibleNodes struct {
 	Day     int      `json:"day"`
 	Count   int      `json:"eligibleNodesCount"`
@@ -130,6 +138,26 @@ type EligibleSubmissionCounts struct {
 
 type EligibleSubmissionCountsResponse struct {
 	SlotCounts []EligibleSubmissionCounts `json:"eligibleSubmissionCounts"`
+}
+
+type DiscardedSubmissionByProjectDetails struct {
+	FinalizedCID               string   `json:"finalizedCID"`
+	DiscardedSubmissionCount   int      `json:"discardedSubmissionCount"`
+	DiscardedSubmissionDetails []string `json:"discardedSubmissions"`
+}
+
+type DiscardedSubmissionByProject map[string]*DiscardedSubmissionByProjectDetails
+
+type DiscardedSubmissionByDayResponse struct {
+	ProjectID string                              `json:"projectID"`
+	Details   DiscardedSubmissionByProjectDetails `json:"details"`
+}
+
+type DiscardedSubmissionDetailsByDayAPIResponse struct {
+	SlotID               int                                `json:"slotID"`
+	DiscardedSubmissions []DiscardedSubmissionByDayResponse `json:"discardedSubmissions"`
+	TotalPages           int                                `json:"totalPages"`
+	CurrentPage          int                                `json:"currentPage"`
 }
 
 type DiscardedSubmissionDetails struct {
@@ -830,8 +858,8 @@ func handleEligibleSlotSubmissionCount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDiscardedSubmissions godoc
-// @Summary Get discarded submission details
+// handleDiscardedSubmissionsByEpoch godoc
+// @Summary Get discarded submission details by epoch
 // @Description Retrieves the discarded submissions details within a specific epoch for a given data market address
 // @Tags Discarded Submissions
 // @Accept json
@@ -840,8 +868,8 @@ func handleEligibleSlotSubmissionCount(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} Response[DiscardedSubmissionsAPIResponse]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., missing or invalid epochID, invalid day or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
-// @Router /discardedSubmissions [post]
-func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
+// @Router /discardedSubmissionsByEpoch [post]
+func handleDiscardedSubmissionsByEpoch(w http.ResponseWriter, r *http.Request) {
 	var request EpochDataMarketDayRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -922,6 +950,148 @@ func handleDiscardedSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := Response[DiscardedSubmissionsAPIResponse]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleDiscardedSubmissionsByDay godoc
+// @Summary Get discarded submission details by day
+// @Description Retrieves the details of discarded submissions for a specified day and slotID associated with a given data market address
+// @Tags Discarded Submissions
+// @Accept json
+// @Produce json
+// @Param request body DiscardedSubmissionsByDayRequest true "Data market slotID day request payload"
+// @Success 200 {object} Response[DiscardedSubmissionDetailsByDayAPIResponse]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID, invalid day or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Router /discardedSubmissionsByDay [post]
+func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
+	var request DiscardedSubmissionsByDayRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	if err != nil {
+		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
+		return
+	}
+
+	if request.Day < 1 {
+		http.Error(w, "Day must be greater than or equal to 1", http.StatusBadRequest)
+		return
+	}
+
+	if int64(request.Day) > day.Int64() {
+		http.Error(w, fmt.Sprintf("Day must not exceed the current day (%d)", day.Int64()), http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
+		return
+	}
+
+	// Construct the Redis key for the discarded submission details
+	discardedKey := redis.DiscardedSubmissionsByDayKey(request.DataMarketAddress, strconv.Itoa(request.Day))
+
+	// Fetch all entries from the hashtable
+	results, err := redis.RedisClient.HGetAll(context.Background(), discardedKey).Result()
+	if err != nil {
+		log.Errorf("Failed to fetch discarded submission details from Redis for day %s: %v", strconv.Itoa(request.Day), http.StatusInternalServerError)
+		return
+	}
+
+	if len(results) == 0 {
+		log.Errorf("No discarded submissions found for key %s\n", discardedKey)
+		return
+	}
+
+	// Get the slotID map
+	slotIDMap, exists := results[strconv.Itoa(request.SlotID)]
+	if !exists || slotIDMap == "" {
+		http.Error(w, fmt.Sprintf("No discarded submissions found for slotID %d", request.SlotID), http.StatusNotFound)
+		return
+	}
+
+	// Deserialize the JSON string into DiscardedSubmissionByProject
+	var details DiscardedSubmissionByProject
+	if err := json.Unmarshal([]byte(slotIDMap), &details); err != nil {
+		log.Errorf("Failed to deserialize discarded submission details for slot %d: %v", slotID, err)
+		return
+	}
+
+	// Prepare the response data
+	var responseProjects []DiscardedSubmissionByDayResponse
+	for projectID, projectDetails := range details {
+		// Append to the response list
+		responseProjects = append(responseProjects, DiscardedSubmissionByDayResponse{
+			ProjectID: projectID,
+			Details:   *projectDetails,
+		})
+	}
+
+	// Pagination logic
+	page := request.Page
+	if page < 1 {
+		page = 1
+	}
+
+	pageSize := 50 // Fixed page size
+	totalItems := len(responseProjects)
+	totalPages := (totalItems + pageSize - 1) / pageSize
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > totalItems {
+		start, end = 0, 0 // No items for this page
+	} else if end > totalItems {
+		end = totalItems
+	}
+
+	paginatedProjects := responseProjects[start:end]
+
+	// Construct the final API response
+	apiResponse := DiscardedSubmissionDetailsByDayAPIResponse{
+		SlotID:               request.SlotID,
+		DiscardedSubmissions: paginatedProjects,
+		TotalPages:           totalPages,
+		CurrentPage:          page,
+	}
+
+	info := InfoType[DiscardedSubmissionDetailsByDayAPIResponse]{
+		Success:  true,
+		Response: apiResponse,
+	}
+
+	response := Response[DiscardedSubmissionDetailsByDayAPIResponse]{
 		Info:      info,
 		RequestID: r.Context().Value("request_id").(string),
 	}
@@ -1133,7 +1303,8 @@ func StartApiServer() {
 	mux.HandleFunc("/batchCount", handleBatchCount)
 	mux.HandleFunc("/epochSubmissionDetails", handleEpochSubmissionDetails)
 	mux.HandleFunc("/eligibleSlotSubmissionCount", handleEligibleSlotSubmissionCount)
-	mux.HandleFunc("/discardedSubmissions", handleDiscardedSubmissions)
+	mux.HandleFunc("/discardedSubmissionsByEpoch", handleDiscardedSubmissionsByEpoch)
+	mux.HandleFunc("/discardedSubmissionsByDay", handleDiscardedSubmissionsByDay)
 	mux.HandleFunc("/lastSimulatedSubmission", handleLastSimulatedSubmission)
 	mux.HandleFunc("/lastSnapshotSubmission", handleLastSnapshotSubmission)
 
