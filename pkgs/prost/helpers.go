@@ -166,8 +166,8 @@ func startPeriodicCleanup(currentBlockNum int64) {
 		}(dataMarketAddress)
 	}
 
-	log.Infof("🧹 Completed cleanup for all stale epoch markers")
-
 	// Wait for all data market goroutines to finish
 	wg.Wait()
+
+	log.Infof("🧹 Completed cleanup for all stale epoch markers")
 }
