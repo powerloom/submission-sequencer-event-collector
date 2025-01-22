@@ -21,6 +21,11 @@ var lastProcessedBlock int64
 func StartFetchingBlocks() {
 	log.Println("Submission Event Collector started")
 
+	// Start the periodic cleanup routine only once
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go startPeriodicCleanupRoutine(ctx)
+
 	for {
 		// Fetch the latest block available on the chain
 		latestBlock, err := fetchBlock(nil)
@@ -58,9 +63,6 @@ func StartFetchingBlocks() {
 
 			// Process the events in the block
 			go ProcessEvents(block)
-
-			// Start periodic cleanup of stale epoch marker keys
-			go startPeriodicCleanupRoutine(context.Background(), block)
 
 			// Add block number and its hash to Redis
 			if err = redis.SetWithExpiration(context.Background(), redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 30*time.Minute); err != nil {
