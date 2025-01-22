@@ -105,3 +105,7 @@ func LastSimulatedSubmission(dataMarketAddress string, slotID uint64) string {
 func LastSnapshotSubmission(dataMarketAddress string, slotID uint64) string {
 	return fmt.Sprintf("%s.%s.%d", pkgs.LastSnapshotSubmissionKey, strings.ToLower(dataMarketAddress), slotID)
 }
+
+func TotalNodesCountKey() string {
+	return pkgs.TotalNodesCount
+}

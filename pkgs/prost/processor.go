@@ -492,8 +492,19 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 						log.Errorf("❌ Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
 						return err
 					}
+					cachedTotalNodesCount, err := redis.Get(context.Background(), redis.TotalNodesCountKey())
+					if err != nil {
+						log.Errorf("❌ Failed to fetch total nodes count for data market %s: %v", dataMarketAddress, err)
+						return err
+					}
 
-					for slotID := int64(1); slotID <= NodeCount.Int64(); slotID++ {
+					totalNodesCount, ok := new(big.Int).SetString(cachedTotalNodesCount, 10)
+					if !ok {
+						log.Errorf("❌ Failed to convert total nodes count %s to big.Int", cachedTotalNodesCount)
+						return err
+					}
+
+					for slotID := int64(1); slotID <= totalNodesCount.Int64(); slotID++ {
 						var slotSubmissionCount *big.Int
 						if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
 							return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), dayToCheck)
@@ -648,7 +659,19 @@ func sendRewardUpdates(dataMarketAddress, epochID string) error {
 	slotIDs := make([]*big.Int, 0)
 	submissionsList := make([]*big.Int, 0)
 
-	for slotID := int64(1); slotID <= NodeCount.Int64(); slotID++ {
+	cachedTotalNodesCount, err := redis.Get(context.Background(), redis.TotalNodesCountKey())
+	if err != nil {
+		log.Errorf("❌ Failed to fetch total nodes count for data market %s: %v", dataMarketAddress, err)
+		return err
+	}
+
+	totalNodesCount, ok := new(big.Int).SetString(cachedTotalNodesCount, 10)
+	if !ok {
+		log.Errorf("❌ Failed to convert total nodes count %s to big.Int", cachedTotalNodesCount)
+		return err
+	}
+
+	for slotID := int64(1); slotID <= totalNodesCount.Int64(); slotID++ {
 		// Get the eligible submission count from Redis
 		key := redis.EligibleSlotSubmissionKey(dataMarketAddress, big.NewInt(slotID).String(), currentDay.String())
 		slotSubmissionCount, err := redis.Get(context.Background(), key)

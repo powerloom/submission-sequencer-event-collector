@@ -27,7 +27,6 @@ var (
 	Client              *ethclient.Client
 	Instance            *contract.Contract
 	ContractABI         abi.ABI
-	NodeCount           *big.Int
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
 	BufferEpochs        = 5
 )
@@ -125,12 +124,6 @@ func LoadContractStateVariables() {
 		}
 	}
 
-	// Fetch the total node count from contract and cache it
-	if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
-		return Instance.GetTotalNodeCount(&bind.CallOpts{Context: context.Background()})
-	}); err == nil {
-		NodeCount = output
-	}
 }
 
 func getExpirationTime(epochID, daySize, epochsInADay int64) time.Time {
