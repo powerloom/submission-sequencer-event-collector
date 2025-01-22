@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -93,10 +92,7 @@ func fetchEligibleSlotIDs(dataMarketAddress, day string) (int, []string) {
 }
 
 // startPeriodicCleanupRoutine calls startPeriodicCleanup every 10 minutes
-func startPeriodicCleanupRoutine(ctx context.Context, currentBlock *types.Block) {
-	// Get the current block number
-	currentBlockNum := currentBlock.Number().Int64()
-
+func startPeriodicCleanupRoutine(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Minute) // Configurable interval
 	defer ticker.Stop()
 
@@ -106,8 +102,17 @@ func startPeriodicCleanupRoutine(ctx context.Context, currentBlock *types.Block)
 			log.Info("⏹️ Periodic cleanup routine stopped")
 			return
 		case <-ticker.C:
-			// Start the periodic cleanup for stale epoch markers
-			log.Debug("Starting periodic cleanup for stale epoch markers...")
+			// Fetch the current block dynamically
+			currentBlock, err := fetchBlock(nil)
+			if err != nil {
+				log.Errorf("Failed to fetch the latest block during cleanup routine: %s", err)
+				continue
+			}
+
+			currentBlockNum := currentBlock.Number().Int64()
+			log.Infof("Starting periodic cleanup for stale epoch markers at block number: %d", currentBlockNum)
+
+			// Perform the cleanup
 			startPeriodicCleanup(currentBlockNum)
 		}
 	}
