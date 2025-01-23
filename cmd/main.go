@@ -1,6 +1,10 @@
 package main
 
 import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/prost"
@@ -8,6 +12,7 @@ import (
 	"submission-sequencer-collector/pkgs/service"
 	"submission-sequencer-collector/pkgs/utils"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -27,18 +32,39 @@ func main() {
 	// Setup redis
 	redis.RedisClient = redis.NewRedisClient()
 
+	// Create root context before any client configuration
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := prost.ConfigureClient(ctx); err != nil {
+		log.Fatal(err)
+	}
+
 	// Set up the RPC client, contract, and ABI instance
-	prost.ConfigureClient()
-	prost.ConfigureContractInstance()
+	if err := prost.ConfigureContractInstance(ctx); err != nil {
+		log.Fatal(err)
+	}
 	prost.ConfigureABI()
 
 	// Load the state variables from the protocol state contract
-	prost.LoadContractStateVariables()
+	if err := prost.LoadContractStateVariables(ctx); err != nil {
+		log.Fatal(err)
+	}
+
+	// Create a root context that can be cancelled
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
 
 	var wg sync.WaitGroup
-
 	wg.Add(1)
-	go service.StartApiServer()    // Start API Server
-	go prost.StartFetchingBlocks() // Start detecting blocks
+	go service.StartApiServer()       // Start API Server
+	go prost.StartFetchingBlocks(ctx) // Pass the context
+
+	// Add signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	cancel() // Signal all goroutines to shut down
 	wg.Wait()
 }

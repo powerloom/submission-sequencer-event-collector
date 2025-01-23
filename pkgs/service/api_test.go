@@ -46,8 +46,10 @@ func TestMain(m *testing.M) {
 	utils.InitLogger()
 	redis.RedisClient = redis.NewRedisClient()
 
-	prost.ConfigureClient()
-	prost.ConfigureContractInstance()
+	prost.ConfigureClient(context.Background())
+	if err := prost.ConfigureContractInstance(context.Background()); err != nil {
+		log.Fatal(err)
+	}
 
 	m.Run()
 
