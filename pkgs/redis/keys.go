@@ -90,6 +90,10 @@ func DiscardedSubmissionsKey(dataMarketAddress, currentDay, epochID string) stri
 	return fmt.Sprintf("%s.%s.%s.%s", pkgs.DiscardedSubmissionKey, strings.ToLower(dataMarketAddress), currentDay, epochID)
 }
 
+func DiscardedSubmissionsByDayKey(dataMarketAddress, currentDay string) string {
+	return fmt.Sprintf("%s.%s.%s", pkgs.DiscardedSubmissionKey, strings.ToLower(dataMarketAddress), currentDay)
+}
+
 func ZeroCountUpdateKey(dataMarketAddress, day string) string {
 	return fmt.Sprintf("%s.%s.%s", pkgs.ZeroCountKey, strings.ToLower(dataMarketAddress), day)
 }
@@ -100,4 +104,8 @@ func LastSimulatedSubmission(dataMarketAddress string, slotID uint64) string {
 
 func LastSnapshotSubmission(dataMarketAddress string, slotID uint64) string {
 	return fmt.Sprintf("%s.%s.%d", pkgs.LastSnapshotSubmissionKey, strings.ToLower(dataMarketAddress), slotID)
+}
+
+func TotalNodesCountKey() string {
+	return pkgs.TotalNodesCount
 }

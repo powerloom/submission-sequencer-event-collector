@@ -66,7 +66,53 @@ const docTemplate = `{
                 }
             }
         },
-        "/discardedSubmissions": {
+        "/discardedSubmissionsByDay": {
+            "post": {
+                "description": "Retrieves the details of discarded submissions for a specified day and slotID associated with a given data market address",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discarded Submissions"
+                ],
+                "summary": "Get discarded submission details by day",
+                "parameters": [
+                    {
+                        "description": "Data market slotID day request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.DiscardedSubmissionsByDayRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid slotID, invalid day or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/discardedSubmissionsByEpoch": {
             "post": {
                 "description": "Retrieves the discarded submissions details within a specific epoch for a given data market address",
                 "consumes": [
@@ -78,7 +124,7 @@ const docTemplate = `{
                 "tags": [
                     "Discarded Submissions"
                 ],
-                "summary": "Get discarded submission details",
+                "summary": "Get discarded submission details by epoch",
                 "parameters": [
                     {
                         "description": "Epoch data market day request payload",
@@ -482,6 +528,34 @@ const docTemplate = `{
                 }
             }
         },
+        "service.DiscardedSubmissionByDayResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "$ref": "#/definitions/service.DiscardedSubmissionByProjectDetails"
+                },
+                "projectID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.DiscardedSubmissionByProjectDetails": {
+            "type": "object",
+            "properties": {
+                "discardedSubmissionCount": {
+                    "type": "integer"
+                },
+                "discardedSubmissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "finalizedCID": {
+                    "type": "string"
+                }
+            }
+        },
         "service.DiscardedSubmissionDetails": {
             "type": "object",
             "properties": {
@@ -499,6 +573,26 @@ const docTemplate = `{
                 },
                 "mostFrequentSnapshotCID": {
                     "type": "string"
+                }
+            }
+        },
+        "service.DiscardedSubmissionDetailsByDayAPIResponse": {
+            "type": "object",
+            "properties": {
+                "currentPage": {
+                    "type": "integer"
+                },
+                "discardedSubmissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.DiscardedSubmissionByDayResponse"
+                    }
+                },
+                "slotID": {
+                    "type": "integer"
+                },
+                "totalPages": {
+                    "type": "integer"
                 }
             }
         },
@@ -521,6 +615,26 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/service.DiscardedSubmissionDetailsResponse"
                     }
+                }
+            }
+        },
+        "service.DiscardedSubmissionsByDayRequest": {
+            "type": "object",
+            "properties": {
+                "dataMarketAddress": {
+                    "type": "string"
+                },
+                "day": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "slotID": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
                 }
             }
         },
@@ -647,6 +761,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.InfoType-service_DiscardedSubmissionDetailsByDayAPIResponse": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "$ref": "#/definitions/service.DiscardedSubmissionDetailsByDayAPIResponse"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "service.InfoType-service_DiscardedSubmissionsAPIResponse": {
             "type": "object",
             "properties": {
@@ -755,6 +880,17 @@ const docTemplate = `{
             "properties": {
                 "info": {
                     "$ref": "#/definitions/service.InfoType-service_BatchCount"
+                },
+                "requestID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_DiscardedSubmissionDetailsByDayAPIResponse"
                 },
                 "requestID": {
                     "type": "string"

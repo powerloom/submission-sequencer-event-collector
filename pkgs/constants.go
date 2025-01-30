@@ -18,6 +18,7 @@ const (
 // General Key Constants
 const (
 	CurrentDayKey                    = "CurrentDayKey"
+	TotalNodesCount                  = "TotalNodesCount"
 	DaySizeTableKey                  = "DaySizeTableKey"
 	BatchCountKey                    = "BatchCountKey"
 	CollectorKey                     = "SnapshotCollector"

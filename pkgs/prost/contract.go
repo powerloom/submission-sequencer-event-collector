@@ -27,28 +27,40 @@ var (
 	Client              *ethclient.Client
 	Instance            *contract.Contract
 	ContractABI         abi.ABI
-	NodeCount           *big.Int
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
 	BufferEpochs        = 5
 )
 
-func ConfigureClient() {
-	rpcClient, err := rpc.DialOptions(context.Background(), config.SettingsObj.ClientUrl, rpc.WithHTTPClient(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}))
+func ConfigureClient(ctx context.Context) error {
+	rpcClient, err := rpc.DialOptions(ctx, config.SettingsObj.ClientUrl, rpc.WithHTTPClient(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}))
 	if err != nil {
 		log.Errorf("Failed to connect to client: %s", err)
 		log.Fatal(err)
 	}
 
 	Client = ethclient.NewClient(rpcClient)
+	return nil
 }
 
-func ConfigureContractInstance() {
-	Instance, _ = contract.NewContract(common.HexToAddress(config.SettingsObj.ContractAddress), Client)
+func ConfigureContractInstance(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var err error
+	Instance, err = contract.NewContract(common.HexToAddress(config.SettingsObj.ContractAddress), Client)
+	if err != nil {
+		return err
+	}
 
 	for _, dataMarketContractAddr := range config.SettingsObj.DataMarketContractAddresses {
-		DataMarketInstance, _ := dataMarketContract.NewDataMarketContract(dataMarketContractAddr, Client)
+		DataMarketInstance, err := dataMarketContract.NewDataMarketContract(dataMarketContractAddr, Client)
+		if err != nil {
+			return err
+		}
 		DataMarketInstances[dataMarketContractAddr.Hex()] = DataMarketInstance
 	}
+
+	return nil
 }
 
 func ConfigureABI() {
@@ -62,75 +74,78 @@ func ConfigureABI() {
 }
 
 func MustQuery[K any](ctx context.Context, call func() (val K, err error)) (K, error) {
-	expBackOff := backoff.NewConstantBackOff(1 * time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
+	expBackOff := backoff.NewConstantBackOff(1 * time.Second)
 	var val K
+
 	operation := func() error {
-		var err error
-		val, err = call()
-		return err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			var err error
+			val, err = call()
+			return err
+		}
 	}
-	// Use the retry package to execute the operation with backoff
-	err := backoff.Retry(operation, backoff.WithMaxRetries(expBackOff, 3))
+
+	err := backoff.Retry(operation, backoff.WithContext(expBackOff, ctx))
 	if err != nil {
 		clients.SendFailureNotification("Contract query error [MustQuery]", err.Error(), time.Now().String(), "High")
 		return *new(K), err
 	}
-	return val, err
+	return val, nil
 }
 
-func LoadContractStateVariables() {
+func LoadContractStateVariables(ctx context.Context) error {
 	// Iterate over each data market contract address in the config
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketContractAddresses {
 		// Fetch snapshot submission limit for the current data market address
-		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+		if output, err := MustQuery(ctx, func() (*big.Int, error) {
 			return Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, dataMarketAddress)
 		}); err == nil {
 			// Convert the submission limit to a string for storage in Redis
 			submissionLimit := output.String()
 
 			// Store the submission limit in the Redis hash table
-			err := redis.RedisClient.HSet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress.Hex(), submissionLimit).Err()
+			err := redis.RedisClient.HSet(ctx, redis.GetSubmissionLimitTableKey(), dataMarketAddress.Hex(), submissionLimit).Err()
 			if err != nil {
 				log.Errorf("Failed to set submission limit for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
 
 		// Fetch the day size for the specified data market address from contract
-		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+		if output, err := MustQuery(ctx, func() (*big.Int, error) {
 			return Instance.DAYSIZE(&bind.CallOpts{}, dataMarketAddress)
 		}); err == nil {
 			// Convert the day size to a string for storage in Redis
 			daySize := output.String()
 
 			// Store the day size in the Redis hash table
-			err := redis.RedisClient.HSet(context.Background(), redis.GetDaySizeTableKey(), dataMarketAddress.Hex(), daySize).Err()
+			err := redis.RedisClient.HSet(ctx, redis.GetDaySizeTableKey(), dataMarketAddress.Hex(), daySize).Err()
 			if err != nil {
 				log.Errorf("Failed to set day size for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
 
 		// Fetch the daily snapshot quota for the specified data market address from contract
-		if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+		if output, err := MustQuery(ctx, func() (*big.Int, error) {
 			return Instance.DailySnapshotQuota(&bind.CallOpts{}, dataMarketAddress)
 		}); err == nil {
 			// Convert the daily snapshot quota to a string for storage in Redis
 			dailySnapshotQuota := output.String()
 
 			// Store the daily snapshot quota in the Redis hash table
-			err := redis.RedisClient.HSet(context.Background(), redis.GetDailySnapshotQuotaTableKey(), dataMarketAddress.Hex(), dailySnapshotQuota).Err()
+			err := redis.RedisClient.HSet(ctx, redis.GetDailySnapshotQuotaTableKey(), dataMarketAddress.Hex(), dailySnapshotQuota).Err()
 			if err != nil {
 				log.Errorf("Failed to set daily snapshot quota for data market %s in Redis: %v", dataMarketAddress.Hex(), err)
 			}
 		}
 	}
 
-	// Fetch the total node count from contract and cache it
-	if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
-		return Instance.GetTotalNodeCount(&bind.CallOpts{Context: context.Background()})
-	}); err == nil {
-		NodeCount = output
-	}
+	return nil
 }
 
 func getExpirationTime(epochID, daySize, epochsInADay int64) time.Time {
@@ -155,9 +170,9 @@ func getExpirationTime(epochID, daySize, epochsInADay int64) time.Time {
 	return expirationTime
 }
 
-func FetchCurrentDay(dataMarketAddress common.Address) (*big.Int, error) {
+func FetchCurrentDay(ctx context.Context, dataMarketAddress common.Address) (*big.Int, error) {
 	// Fetch the current day for the given data market address from Redis
-	value, err := redis.Get(context.Background(), redis.GetCurrentDayKey(dataMarketAddress.Hex()))
+	value, err := redis.Get(ctx, redis.GetCurrentDayKey(dataMarketAddress.Hex()))
 	if err != nil {
 		log.Errorf("Error fetching day value for data market %s from Redis: %v", dataMarketAddress.Hex(), err)
 		return nil, err
@@ -172,7 +187,7 @@ func FetchCurrentDay(dataMarketAddress common.Address) (*big.Int, error) {
 
 	// Cache miss: fetch the current day for the specified data market address from contract
 	var currentDay *big.Int
-	if output, err := MustQuery(context.Background(), func() (*big.Int, error) {
+	if output, err := MustQuery(ctx, func() (*big.Int, error) {
 		return Instance.DayCounter(&bind.CallOpts{}, dataMarketAddress)
 	}); err == nil {
 		currentDay = output
@@ -193,21 +208,18 @@ func isValidDataMarketAddress(dataMarketAddress string) bool {
 }
 
 // calculateSubmissionLimitBlock computes the block number when the submission window ends
-func calculateSubmissionLimitBlock(dataMarketAddress string, epochReleaseBlock *big.Int) (*big.Int, error) {
-	// Fetch the submission limit for the given data market address from Redis
-	submissionLimitStr, err := redis.RedisClient.HGet(context.Background(), redis.GetSubmissionLimitTableKey(), dataMarketAddress).Result()
+func calculateSubmissionLimitBlock(ctx context.Context, dataMarketAddress string, epochReleaseBlock *big.Int) (*big.Int, error) {
+	submissionLimitStr, err := redis.RedisClient.HGet(ctx, redis.GetSubmissionLimitTableKey(), dataMarketAddress).Result()
 	if err != nil {
 		log.Errorf("Error fetching submission limit for data market %s: %s", dataMarketAddress, err)
 		return nil, err
 	}
 
-	// Convert the submission limit from string to *big.Int
 	submissionLimit, ok := new(big.Int).SetString(submissionLimitStr, 10)
 	if !ok {
 		log.Errorf("Invalid submission limit value for data market %s: %s", dataMarketAddress, submissionLimitStr)
 		return nil, err
 	}
 
-	// Calculate and return the submission limit block number
 	return new(big.Int).Add(epochReleaseBlock, submissionLimit), nil
 }

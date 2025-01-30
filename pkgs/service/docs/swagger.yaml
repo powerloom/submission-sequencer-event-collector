@@ -14,6 +14,24 @@ definitions:
       totalSubmissions:
         type: integer
     type: object
+  service.DiscardedSubmissionByDayResponse:
+    properties:
+      details:
+        $ref: '#/definitions/service.DiscardedSubmissionByProjectDetails'
+      projectID:
+        type: string
+    type: object
+  service.DiscardedSubmissionByProjectDetails:
+    properties:
+      discardedSubmissionCount:
+        type: integer
+      discardedSubmissions:
+        items:
+          type: string
+        type: array
+      finalizedCID:
+        type: string
+    type: object
   service.DiscardedSubmissionDetails:
     properties:
       discardedSubmissionCount:
@@ -26,6 +44,19 @@ definitions:
         type: object
       mostFrequentSnapshotCID:
         type: string
+    type: object
+  service.DiscardedSubmissionDetailsByDayAPIResponse:
+    properties:
+      currentPage:
+        type: integer
+      discardedSubmissions:
+        items:
+          $ref: '#/definitions/service.DiscardedSubmissionByDayResponse'
+        type: array
+      slotID:
+        type: integer
+      totalPages:
+        type: integer
     type: object
   service.DiscardedSubmissionDetailsResponse:
     properties:
@@ -40,6 +71,19 @@ definitions:
         items:
           $ref: '#/definitions/service.DiscardedSubmissionDetailsResponse'
         type: array
+    type: object
+  service.DiscardedSubmissionsByDayRequest:
+    properties:
+      dataMarketAddress:
+        type: string
+      day:
+        type: integer
+      page:
+        type: integer
+      slotID:
+        type: integer
+      token:
+        type: string
     type: object
   service.EligibleNodes:
     properties:
@@ -120,6 +164,13 @@ definitions:
       success:
         type: boolean
     type: object
+  service.InfoType-service_DiscardedSubmissionDetailsByDayAPIResponse:
+    properties:
+      response:
+        $ref: '#/definitions/service.DiscardedSubmissionDetailsByDayAPIResponse'
+      success:
+        type: boolean
+    type: object
   service.InfoType-service_DiscardedSubmissionsAPIResponse:
     properties:
       response:
@@ -190,6 +241,13 @@ definitions:
     properties:
       info:
         $ref: '#/definitions/service.InfoType-service_BatchCount'
+      requestID:
+        type: string
+    type: object
+  service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse:
+    properties:
+      info:
+        $ref: '#/definitions/service.InfoType-service_DiscardedSubmissionDetailsByDayAPIResponse'
       requestID:
         type: string
     type: object
@@ -322,7 +380,39 @@ paths:
       summary: Get total batch count
       tags:
       - Batch Count
-  /discardedSubmissions:
+  /discardedSubmissionsByDay:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the details of discarded submissions for a specified
+        day and slotID associated with a given data market address
+      parameters:
+      - description: Data market slotID day request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.DiscardedSubmissionsByDayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.Response-service_DiscardedSubmissionDetailsByDayAPIResponse'
+        "400":
+          description: 'Bad Request: Invalid input parameters (e.g., invalid slotID,
+            invalid day or invalid data market address)'
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized: Incorrect token'
+          schema:
+            type: string
+      summary: Get discarded submission details by day
+      tags:
+      - Discarded Submissions
+  /discardedSubmissionsByEpoch:
     post:
       consumes:
       - application/json
@@ -351,7 +441,7 @@ paths:
           description: 'Unauthorized: Incorrect token'
           schema:
             type: string
-      summary: Get discarded submission details
+      summary: Get discarded submission details by epoch
       tags:
       - Discarded Submissions
   /eligibleNodesCount:
