@@ -21,6 +21,11 @@ var lastProcessedBlock int64
 func StartFetchingBlocks() {
 	log.Println("Submission Event Collector started")
 
+	// Start the periodic cleanup routine only once
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go startPeriodicCleanupRoutine(ctx)
+
 	for {
 		// Fetch the latest block available on the chain
 		latestBlock, err := fetchBlock(nil)
