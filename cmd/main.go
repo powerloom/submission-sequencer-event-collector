@@ -69,6 +69,15 @@ func main() {
 			}
 		}(dataMarketAddress)
 	}
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+		if err := prost.CleanupSubmissionDumpForAllSlots(ctx, addr); err != nil {
+				log.Printf("Cleanup failed for all slots: %v", err)
+			}
+		}(dataMarketAddress)
+	}
 
 	wg.Add(1)
 	go service.StartApiServer() // Start API Server
