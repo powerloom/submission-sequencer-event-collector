@@ -72,3 +72,66 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 	}
 	return nil
 }
+
+func CleanupSubmissionDumpForAllSlots(ctx context.Context, dataMarketAddr string) error {
+	log.Debugf("Cleaning up old submission dump for all slots for data market %s", dataMarketAddr)
+	// get current epoch
+	currentEpochStr, err := redis.Get(ctx, redis.CurrentEpoch(dataMarketAddr))
+	if err != nil {
+		log.Errorf("Failed to get current epoch for cleanup: %v", err)
+		return err
+	}
+
+	currentEpoch, err := strconv.ParseUint(currentEpochStr, 10, 64)
+	if err != nil {
+		log.Errorf("Failed to parse current epoch %s: %v", currentEpochStr, err)
+		return err
+	}
+
+	//get node count
+	nodeCountStr, err := redis.Get(ctx, redis.TotalNodesCountKey())
+	if err != nil {
+		log.Errorf("Failed to get node count for cleanup: %v", err)
+		return err
+	}
+	nodeCount, err := strconv.ParseUint(nodeCountStr, 10, 64)
+	if err != nil {
+		log.Errorf("Failed to parse node count %s: %v", nodeCountStr, err)
+		return err
+	}
+	for slotId := uint64(1); slotId <= nodeCount; slotId++ {
+		log.Debugf("Cleaning up old submission dump for slot %d for data market %s", slotId, dataMarketAddr)
+		keyPattern := fmt.Sprintf("snapshotter:%s:*:%d.slot_submissions", strings.ToLower(dataMarketAddr), slotId)
+		var cursor uint64
+		var keys []string
+		for {
+			var batch []string
+			var err error
+			batch, cursor, err = redis.RedisClient.Scan(ctx, cursor, keyPattern, 100).Result()
+			if err != nil {
+				log.Errorf("Failed to scan submission dump keys: %v", err)
+				return err
+			}
+			keys = append(keys, batch...)
+			if cursor == 0 {
+				break
+			}
+		}
+		if len(keys) > 0 {
+			// delete epoch IDs less than current epoch - 30
+			// each key is a hash table with epoch IDs as keys
+			for _, key := range keys {
+				pipe := redis.RedisClient.Pipeline()
+				for epochToDelete := currentEpoch - 30; epochToDelete <= 1; epochToDelete-- {
+					pipe.HDel(ctx, key, strconv.FormatUint(epochToDelete, 10))
+				}
+				_, err := pipe.Exec(ctx)
+				if err != nil {
+					log.Errorf("Failed to execute pipeline for key %s: %v", key, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
