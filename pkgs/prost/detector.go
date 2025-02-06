@@ -102,16 +102,27 @@ func processBlock(ctx context.Context, block *types.Block) error {
 
 			log.Debugf("Processing block: %d", blockNum)
 
-			// Check and trigger batch preparation if submission limit is reached for any epoch
-			go checkAndTriggerBatchPreparation(ctx, block)
+			// Launch goroutines with their own timeouts
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer cancel()
+				 checkAndTriggerBatchPreparation(ctx, block)
+			}()
 
-			// Process the events in the block
-			go ProcessEvents(ctx, block)
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer cancel()
+				ProcessEvents(ctx, block)
+			}()
 
-			// Add block number and its hash to Redis
-			if err = redis.SetWithExpiration(ctx, redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 30*time.Minute); err != nil {
-				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
-			}
+			// Redis operation with its own timeout
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := redis.SetWithExpiration(ctx, redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 30*time.Minute); err != nil {
+					log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
+				}
+			}()
 
 			// Update last processed block
 			lastProcessedBlock = blockNum
