@@ -176,13 +176,15 @@ func ProcessEvents(ctx context.Context, block *types.Block) {
 					continue
 				}
 
-				// Push the serialized data to Redis
-				if err = redis.LPush(ctx, "attestorQueue", jsonData).Err(); err != nil {
-					errMsg := fmt.Sprintf("Error pushing batch details to attestor queue in Redis for epoch %s, data market %s: %v",
-						epochID.String(), dataMarketAddress, err)
-					clients.SendFailureNotification(pkgs.ProcessEvents, errMsg, time.Now().String(), "High")
-					log.Error(errMsg)
-					continue
+				if config.SettingsObj.AttestorQueuePushEnabled {
+					// Push the serialized data to Redis
+					if err = redis.LPush(ctx, "attestorQueue", jsonData).Err(); err != nil {
+						errMsg := fmt.Sprintf("Error pushing batch details to attestor queue in Redis for epoch %s, data market %s: %v",
+							epochID.String(), dataMarketAddress, err)
+						clients.SendFailureNotification(pkgs.ProcessEvents, errMsg, time.Now().String(), "High")
+						log.Error(errMsg)
+						continue
+					}
 				}
 
 				log.Infof("✅ Batch details successfully pushed to Redis for epoch %s in data market %s", epochID.String(), dataMarketAddress)
