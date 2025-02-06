@@ -32,6 +32,7 @@ type Settings struct {
 	RetryLimits                 int
 	RewardsUpdateBatchSize      int
 	RewardsUpdateEpochInterval  int64
+	AttestorQueuePushEnabled    bool
 }
 
 func LoadConfig() {
@@ -51,6 +52,11 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse PERIODIC_ELIGIBLE_COUNT_ALERTS environment variable: %v", periodicEligibleCountAlertsErr)
 	}
 
+	attestorQueuePushEnabled, attestorQueuePushEnabledErr := strconv.ParseBool(getEnv("ATTESTOR_QUEUE_PUSH_ENABLED", "false"))
+	if attestorQueuePushEnabledErr != nil {
+		log.Fatalf("Failed to parse ATTESTOR_QUEUE_PUSH_ENABLED environment variable: %v", attestorQueuePushEnabledErr)
+	}
+
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
 		ContractAddress:             getEnv("PROTOCOL_STATE_CONTRACT", ""),
@@ -64,6 +70,7 @@ func LoadConfig() {
 		DataMarketAddresses:         dataMarketAddressesList,
 		PeriodicEligibleCountAlerts: periodicEligibleCountAlerts,
 		APIHost:                     getEnv("API_HOST", ""),
+		AttestorQueuePushEnabled:    attestorQueuePushEnabled,
 	}
 
 	if config.AuthReadToken == "" {

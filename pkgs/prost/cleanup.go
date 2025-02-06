@@ -29,7 +29,7 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 	// Use SCAN instead of KEYS
 	var cursor uint64
 	var keys []string
-	pattern := fmt.Sprintf("%s.%s.*", pkgs.CollectorKey, strings.ToLower(dataMarketAddr))
+	pattern := fmt.Sprintf("%s.%s*", pkgs.CollectorKey, strings.ToLower(dataMarketAddr))
 	log.Debugf("Scanning for keys with pattern: %s for data market %s", pattern, dataMarketAddr)
 	for {
 		var batch []string
@@ -39,7 +39,9 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 			log.Errorf("Failed to scan submission set keys: %v", err)
 			return err
 		}
-		log.Debugf("Found %d submission set by header keys for data market %s", len(batch), dataMarketAddr)
+		if len(batch) > 0 {
+			log.Debugf("Found %d submission set by header keys for data market %s", len(batch), dataMarketAddr)
+		}
 		// extract epoch ID from key
 		for _, key := range batch {
 			epochID := strings.Split(key, ".")[2]
