@@ -29,8 +29,8 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 	// Use SCAN instead of KEYS
 	var cursor uint64
 	var keys []string
-	pattern := fmt.Sprintf("%s.%s.*.*", pkgs.CollectorKey, strings.ToLower(dataMarketAddr))
-
+	pattern := fmt.Sprintf("%s.%s.*", pkgs.CollectorKey, strings.ToLower(dataMarketAddr))
+	log.Debugf("Scanning for keys with pattern: %s for data market %s", pattern, dataMarketAddr)
 	for {
 		var batch []string
 		var err error
@@ -39,6 +39,7 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 			log.Errorf("Failed to scan submission set keys: %v", err)
 			return err
 		}
+		log.Debugf("Found %d submission set by header keys for data market %s", len(batch), dataMarketAddr)
 		// extract epoch ID from key
 		for _, key := range batch {
 			epochID := strings.Split(key, ".")[2]
@@ -58,7 +59,7 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 			break
 		}
 	}
-
+	log.Debugf("Found total %d eligible for removal: submission set by header keys for data market %s", len(keys), dataMarketAddr)
 	// Delete the keys in batch
 	if len(keys) > 0 {
 		if err := redis.RedisClient.Del(ctx, keys...).Err(); err != nil {
@@ -69,4 +70,3 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 	}
 	return nil
 }
-
