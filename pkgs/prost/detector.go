@@ -3,6 +3,7 @@ package prost
 import (
 	"context"
 	"math/big"
+	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
@@ -105,7 +106,7 @@ func processBlock(ctx context.Context, block *types.Block) error {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 				defer cancel()
-				 checkAndTriggerBatchPreparation(ctx, block)
+				checkAndTriggerBatchPreparation(ctx, block)
 			}()
 
 			go func() {
@@ -127,6 +128,7 @@ func processBlock(ctx context.Context, block *types.Block) error {
 			lastProcessedBlock = blockNum
 		}
 	}
-
+	// Sleep for approximately half the expected block time to balance load and responsiveness.
+	time.Sleep(time.Duration(config.SettingsObj.BlockTime*500) * time.Millisecond)
 	return nil
 }
