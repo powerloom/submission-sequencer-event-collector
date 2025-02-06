@@ -3,7 +3,6 @@ package prost
 import (
 	"context"
 	"math/big"
-	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/redis"
 	"time"
 
