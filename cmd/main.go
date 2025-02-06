@@ -56,7 +56,9 @@ func main() {
 	defer cancel()
 
 	var wg sync.WaitGroup
-
+	if !config.SettingsObj.AttestorQueuePushEnabled {
+		redis.Delete(ctx, "attestorQueue")
+	}
 	// Run initial cleanup for all data markets
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
 		wg.Add(1)
