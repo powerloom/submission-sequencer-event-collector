@@ -2,6 +2,7 @@ package prost
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -19,8 +20,13 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 		log.Errorf("Failed to get current epoch for cleanup: %v", err)
 		return err
 	}
+	log.Debugf("Current epoch cached query result for data market %s: %s", dataMarketAddr, currentEpochStr)
+	if currentEpochStr == "" {
+		log.Errorf("Current epoch is empty for data market %s", dataMarketAddr)
+		return errors.New("current epoch is empty")
+	}
 
-	currentEpoch, err := strconv.ParseUint(currentEpochStr, 10, 64)
+	currentEpoch, err := strconv.Atoi(currentEpochStr)
 	if err != nil {
 		log.Errorf("Failed to parse current epoch %s: %v", currentEpochStr, err)
 		return err
@@ -43,7 +49,7 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 		// extract epoch ID from key
 		for _, key := range batch {
 			epochID := strings.Split(key, ".")[2]
-			epochIDInt, err := strconv.ParseUint(epochID, 10, 64)
+			epochIDInt, err := strconv.Atoi(epochID)
 			if err != nil {
 				log.Errorf("Failed to parse epoch ID %s: %v", epochID, err)
 				continue
