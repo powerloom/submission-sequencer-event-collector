@@ -321,7 +321,7 @@ func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epoc
 	log.Infof("🔄 Arranged %d batches of submission keys for epoch %s in data market %s", len(batches), epochID.String(), dataMarketAddress)
 
 	// Store the batch count for the specified data market address in Redis
-	if err := redis.Set(ctx, redis.GetBatchCountKey(dataMarketAddress, epochID.String()), strconv.Itoa(len(batches))); err != nil {
+	if err := redis.SetWithExpiration(ctx, redis.GetBatchCountKey(dataMarketAddress, epochID.String()), strconv.Itoa(len(batches)), 24*time.Hour); err != nil {
 		log.Errorf("Failed to set batch count for epoch %s, data market %s in Redis: %s", epochID.String(), dataMarketAddress, err.Error())
 	}
 
