@@ -39,9 +39,7 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 			log.Errorf("Failed to scan submission set keys: %v", err)
 			return err
 		}
-		if len(batch) > 0 {
-			log.Debugf("Found %d submission set by header keys for data market %s", len(batch), dataMarketAddr)
-		}
+
 		// extract epoch ID from key
 		for _, key := range batch {
 			epochID := strings.Split(key, ".")[2]
