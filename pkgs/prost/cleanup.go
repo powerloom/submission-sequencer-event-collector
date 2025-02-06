@@ -86,6 +86,11 @@ func CleanupSubmissionDumpForAllSlots(ctx context.Context, dataMarketAddr string
 		return err
 	}
 
+	if currentEpochStr == "" {
+		log.Errorf("Current epoch is empty for data market %s", dataMarketAddr)
+		return errors.New("current epoch is empty")
+	}
+
 	currentEpoch, err := strconv.Atoi(currentEpochStr)
 	if err != nil {
 		log.Errorf("Failed to parse current epoch %s: %v", currentEpochStr, err)

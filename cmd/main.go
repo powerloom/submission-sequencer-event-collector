@@ -59,24 +59,26 @@ func main() {
 	if !config.SettingsObj.AttestorQueuePushEnabled {
 		redis.Delete(ctx, "attestorQueue")
 	}
-	// Run initial cleanup for all data markets
-	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			if err := prost.CleanupSubmissionSet(ctx, addr); err != nil {
-				log.Printf("Initial cleanup failed for %s: %v", addr, err)
+	if config.SettingsObj.InitCleanupEnabled {
+		// Run initial cleanup for all data markets
+		for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+			wg.Add(1)
+			go func(addr string) {
+				defer wg.Done()
+				if err := prost.CleanupSubmissionSet(ctx, addr); err != nil {
+					log.Printf("Initial cleanup failed for %s: %v", addr, err)
+				}
+			}(dataMarketAddress)
+		}
+		for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+			wg.Add(1)
+			go func(addr string) {
+				defer wg.Done()
+			if err := prost.CleanupSubmissionDumpForAllSlots(ctx, addr); err != nil {
+					log.Printf("Cleanup failed for all slots: %v", err)
+				}
+				}(dataMarketAddress)
 			}
-		}(dataMarketAddress)
-	}
-	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-		if err := prost.CleanupSubmissionDumpForAllSlots(ctx, addr); err != nil {
-				log.Printf("Cleanup failed for all slots: %v", err)
-			}
-		}(dataMarketAddress)
 	}
 
 	wg.Add(1)

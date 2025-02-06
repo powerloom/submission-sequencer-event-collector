@@ -33,6 +33,7 @@ type Settings struct {
 	RewardsUpdateBatchSize      int
 	RewardsUpdateEpochInterval  int64
 	AttestorQueuePushEnabled    bool
+	InitCleanupEnabled          bool
 }
 
 func LoadConfig() {
@@ -57,6 +58,11 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse ATTESTOR_QUEUE_PUSH_ENABLED environment variable: %v", attestorQueuePushEnabledErr)
 	}
 
+	initCleanupEnabled, initCleanupEnabledErr := strconv.ParseBool(getEnv("INIT_CLEANUP_ENABLED", "false"))
+	if initCleanupEnabledErr != nil {
+		log.Fatalf("Failed to parse INIT_CLEANUP_ENABLED environment variable: %v", initCleanupEnabledErr)
+	}
+
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
 		ContractAddress:             getEnv("PROTOCOL_STATE_CONTRACT", ""),
@@ -71,6 +77,7 @@ func LoadConfig() {
 		PeriodicEligibleCountAlerts: periodicEligibleCountAlerts,
 		APIHost:                     getEnv("API_HOST", ""),
 		AttestorQueuePushEnabled:    attestorQueuePushEnabled,
+		InitCleanupEnabled:          initCleanupEnabled,
 	}
 
 	if config.AuthReadToken == "" {
