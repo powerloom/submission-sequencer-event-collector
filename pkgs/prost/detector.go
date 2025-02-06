@@ -104,13 +104,13 @@ func processBlock(ctx context.Context, block *types.Block) error {
 
 			// Launch goroutines with their own timeouts
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 				defer cancel()
 				 checkAndTriggerBatchPreparation(ctx, block)
 			}()
 
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 				defer cancel()
 				ProcessEvents(ctx, block)
 			}()
