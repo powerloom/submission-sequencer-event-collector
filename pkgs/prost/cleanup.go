@@ -86,7 +86,7 @@ func CleanupSubmissionDumpForAllSlots(ctx context.Context, dataMarketAddr string
 		return err
 	}
 
-	currentEpoch, err := strconv.ParseUint(currentEpochStr, 10, 64)
+	currentEpoch, err := strconv.Atoi(currentEpochStr)
 	if err != nil {
 		log.Errorf("Failed to parse current epoch %s: %v", currentEpochStr, err)
 		return err
@@ -98,12 +98,12 @@ func CleanupSubmissionDumpForAllSlots(ctx context.Context, dataMarketAddr string
 		log.Errorf("Failed to get node count for cleanup: %v", err)
 		return err
 	}
-	nodeCount, err := strconv.ParseUint(nodeCountStr, 10, 64)
+	nodeCount, err := strconv.Atoi(nodeCountStr)
 	if err != nil {
 		log.Errorf("Failed to parse node count %s: %v", nodeCountStr, err)
 		return err
 	}
-	for slotId := uint64(1); slotId <= nodeCount; slotId++ {
+	for slotId := 1; slotId <= nodeCount; slotId++ {
 		log.Debugf("Cleaning up old submission dump for slot %d for data market %s", slotId, dataMarketAddr)
 		keyPattern := fmt.Sprintf("snapshotter:%s:*:%d.slot_submissions", strings.ToLower(dataMarketAddr), slotId)
 		var cursor uint64
@@ -127,11 +127,13 @@ func CleanupSubmissionDumpForAllSlots(ctx context.Context, dataMarketAddr string
 			for _, key := range keys {
 				pipe := redis.RedisClient.Pipeline()
 				for epochToDelete := currentEpoch - 30; epochToDelete <= 1; epochToDelete-- {
-					pipe.HDel(ctx, key, strconv.FormatUint(epochToDelete, 10))
+					pipe.HDel(ctx, key, strconv.Itoa(epochToDelete))
 				}
 				_, err := pipe.Exec(ctx)
 				if err != nil {
 					log.Errorf("Failed to execute pipeline for key %s: %v", key, err)
+				} else {
+					log.Debugf("Successfully deleted epoch IDs from %d to 1 for key %s", currentEpoch-30, key)
 				}
 			}
 		}
