@@ -56,8 +56,22 @@ func main() {
 	defer cancel()
 
 	var wg sync.WaitGroup
+
+	// Run initial cleanup for all data markets
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			if err := prost.CleanupSubmissionSet(ctx, addr); err != nil {
+				log.Printf("Initial cleanup failed for %s: %v", addr, err)
+			}
+		}(dataMarketAddress)
+	}
+
 	wg.Add(1)
-	go service.StartApiServer()       // Start API Server
+	go service.StartApiServer() // Start API Server
+
+	wg.Add(1)
 	go prost.StartFetchingBlocks(ctx) // Pass the context
 
 	// Add signal handling for graceful shutdown
