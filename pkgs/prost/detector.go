@@ -129,8 +129,5 @@ func processBlock(ctx context.Context, block *types.Block) error {
 		}
 	}
 
-	// Sleep for approximately half the expected block time to balance load and responsiveness.
-	time.Sleep(time.Duration(config.SettingsObj.BlockTime*500) * time.Millisecond)
-
 	return nil
 }
