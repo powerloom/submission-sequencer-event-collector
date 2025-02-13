@@ -102,27 +102,24 @@ func processBlock(ctx context.Context, block *types.Block) error {
 
 			log.Debugf("Processing block: %d", blockNum)
 
-			// Launch goroutines with their own timeouts
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-				defer cancel()
-				checkAndTriggerBatchPreparation(ctx, block)
-			}()
+			// Create context for batch preparation
+			_, batchCancel := context.WithTimeout(context.Background(), 300*time.Second)
+			go func(block *types.Block) {
+				defer batchCancel()
+				checkAndTriggerBatchPreparation(block)
+			}(block)
 
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-				defer cancel()
-				ProcessEvents(ctx, block)
-			}()
+			// Create context for event processing
+			_, eventCancel := context.WithTimeout(context.Background(), 300*time.Second)
+			go func(block *types.Block) {
+				defer eventCancel()
+				ProcessEvents(block)
+			}(block)
 
-			// Redis operation with its own timeout
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := redis.SetWithExpiration(ctx, redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 30*time.Minute); err != nil {
-					log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
-				}
-			}()
+			// Redis operation with parent context
+			if err := redis.SetWithExpiration(ctx, redis.BlockHashByNumber(blockNum), block.Hash().Hex(), 30*time.Minute); err != nil {
+				log.Errorf("Failed to set block hash for block number %d in Redis: %s", blockNum, err)
+			}
 
 			// Update last processed block
 			lastProcessedBlock = blockNum

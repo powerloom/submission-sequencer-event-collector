@@ -8,6 +8,7 @@ import (
 	"strings"
 	"submission-sequencer-collector/pkgs"
 	"submission-sequencer-collector/pkgs/redis"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -77,8 +78,12 @@ func CleanupSubmissionSet(ctx context.Context, dataMarketAddr string) error {
 	return nil
 }
 
-func CleanupSubmissionDumpForAllSlots(ctx context.Context, dataMarketAddr string) error {
+func CleanupSubmissionDumpForAllSlots(dataMarketAddr string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	log.Debugf("Cleaning up old submission dump for all slots for data market %s", dataMarketAddr)
+
 	// get current epoch
 	currentEpochStr, err := redis.Get(ctx, redis.CurrentEpoch(dataMarketAddr))
 	if err != nil {

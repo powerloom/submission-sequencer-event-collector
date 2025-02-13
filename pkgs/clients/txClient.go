@@ -2,6 +2,7 @@ package clients
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -77,7 +78,7 @@ func SendSubmissionBatchSize(dataMarketAddress string, epochID *big.Int, batchSi
 }
 
 // SendUpdateRewardsRequest sends rewards update data to the transaction relayer service
-func SendUpdateRewardsRequest(dataMarketAddress string, slotIDs, submissionsList []*big.Int, currentDay string, eligibleNodes int) error {
+func SendUpdateRewardsRequest(ctx context.Context, dataMarketAddress string, slotIDs, submissionsList []*big.Int, currentDay string, eligibleNodes int) error {
 	day, ok := new(big.Int).SetString(currentDay, 10)
 	if !ok {
 		return fmt.Errorf("unable to parse current day '%s' into big.Int for update rewards request", currentDay)
@@ -97,9 +98,13 @@ func SendUpdateRewardsRequest(dataMarketAddress string, slotIDs, submissionsList
 		return fmt.Errorf("unable to marshal update rewards request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/submitUpdateRewards", txRelayerClient.url)
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/submitUpdateRewards", txRelayerClient.url), bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("unable to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := txRelayerClient.client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := txRelayerClient.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("unable to send update rewards request: %w", err)
 	}

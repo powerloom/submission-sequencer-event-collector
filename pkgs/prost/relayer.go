@@ -1,6 +1,7 @@
 package prost
 
 import (
+	"context"
 	"math/big"
 	"submission-sequencer-collector/pkgs/clients"
 	"time"
@@ -39,11 +40,11 @@ func SendBatchSizeToRelayer(dataMarketAddress string, epochID *big.Int, batchSiz
 	return nil
 }
 
-func SendUpdateRewardsToRelayer(dataMarketAddress string, slotIDs, submissionsList []*big.Int, day string, eligibleNodes int) error {
+func SendUpdateRewardsToRelayer(ctx context.Context, dataMarketAddress string, slotIDs, submissionsList []*big.Int, day string, eligibleNodes int) error {
 	// Define the operation that will be retried
 	operation := func() error {
-		// Attempt to send the updateRewards request
-		err := clients.SendUpdateRewardsRequest(dataMarketAddress, slotIDs, submissionsList, day, eligibleNodes)
+		// Pass ctx to SendUpdateRewardsRequest
+		err := clients.SendUpdateRewardsRequest(ctx, dataMarketAddress, slotIDs, submissionsList, day, eligibleNodes)
 		if err != nil {
 			log.Errorf("Error sending final updateRewards request for data market %s on day %s: %v. Retrying...", dataMarketAddress, day, err)
 			return err // Return error to trigger retry
@@ -60,8 +61,8 @@ func SendUpdateRewardsToRelayer(dataMarketAddress string, slotIDs, submissionsLi
 	backoffConfig.MaxInterval = 4 * time.Second     // Set max interval between retries
 	backoffConfig.MaxElapsedTime = 10 * time.Second // Retry for a maximum of 10 seconds
 
-	// Limit retries to a maximum of 3 attempts within 10 seconds
-	if err := backoff.Retry(operation, backoff.WithMaxRetries(backoffConfig, 3)); err != nil {
+	// Use context with backoff
+	if err := backoff.Retry(operation, backoff.WithContext(backoffConfig, ctx)); err != nil {
 		log.Errorf("Failed to send final updateRewards request after retries for data market %s on day %s: %v", dataMarketAddress, day, err)
 		return err
 	}

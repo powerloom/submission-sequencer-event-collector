@@ -15,16 +15,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// getValidSubmissionKeys retrieves valid submission keys for the given epoch and headers
 func getValidSubmissionKeys(ctx context.Context, epochID uint64, headers []string, dataMarketAddress string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
+	// Store valid submission keys
 	var submissionKeys []string
+
+	// Process each header to get its submission keys
 	for _, header := range headers {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
+			// Get all submission keys for this header from Redis
 			keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(dataMarketAddress, epochID, header)).Val()
 			if len(keys) > 0 {
 				submissionKeys = append(submissionKeys, keys...)
@@ -95,7 +97,7 @@ func fetchEligibleSlotIDs(ctx context.Context, dataMarketAddress, day string) (i
 	return len(slotIDs), slotIDs
 }
 
-// startPeriodicCleanupRoutine calls startPeriodicCleanup every 10 minutes
+// startPeriodicCleanupRoutine runs a periodic cleanup every 10 minutes
 func startPeriodicCleanupRoutine(cleanupCtx context.Context) {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
@@ -106,7 +108,12 @@ func startPeriodicCleanupRoutine(cleanupCtx context.Context) {
 			log.Info("⏹️ Periodic cleanup routine stopped")
 			return
 		case <-ticker.C:
-			currentBlock, err := fetchBlock(cleanupCtx, nil)
+			// Create timeout context for block fetch
+			fetchCtx, cancel := context.WithTimeout(cleanupCtx, 30*time.Second)
+			// Fetch the latest block
+			currentBlock, err := fetchBlock(fetchCtx, nil)
+			cancel()
+
 			if err != nil {
 				log.Errorf("Failed to fetch the latest block during cleanup routine: %s", err)
 				continue
@@ -115,71 +122,69 @@ func startPeriodicCleanupRoutine(cleanupCtx context.Context) {
 			currentBlockNum := currentBlock.Number().Int64()
 			log.Infof("Starting periodic cleanup for stale epoch markers at block number: %d", currentBlockNum)
 
-			// Use the cleanupCtx, not context.Background()
-			startPeriodicCleanup(cleanupCtx, currentBlockNum)
+			// Trigger the cleanup process
+			startPeriodicCleanup(currentBlockNum)
 		}
 	}
 }
 
 // startPeriodicCleanup cleans up stale epoch markers
-func startPeriodicCleanup(ctx context.Context, currentBlockNum int64) {
-	select {
-	case <-ctx.Done():
-		return
-	default:
-		var wg sync.WaitGroup
+func startPeriodicCleanup(currentBlockNum int64) {
+	var wg sync.WaitGroup
 
-		// Cleanup for each data market in parallel
-		for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-			wg.Add(1)
+	// Cleanup for each data market in parallel
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		wg.Add(1)
 
-			go func(dataMarketAddress string, ctx context.Context) {
-				defer wg.Done()
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					log.Infof("🏁 Starting cleanup for stale epoch markers for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
+		go func(dataMarketAddress string) {
+			defer wg.Done()
 
-					epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.EpochMarkerSet(dataMarketAddress)).Result()
-					if err != nil {
-						log.Errorf("Failed to fetch epoch markers for data market %s during cleanup: %s", dataMarketAddress, err)
-						return
-					}
+			// Create new context with appropriate timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 
-					for _, epochMarkerKey := range epochMarkerKeys {
-						epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
-						if err != nil {
-							log.Errorf("Failed to fetch epoch marker details for key %s during cleanup: %s", epochMarkerKey, err)
-							continue
-						}
+			log.Infof("🏁 Starting cleanup for stale epoch markers for data market %s at block number: %d",
+				dataMarketAddress, currentBlockNum)
 
-						var epochMarkerDetails EpochMarkerDetails
-						if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
-							log.Errorf("Failed to unmarshal epoch marker details for key %s during cleanup: %s", epochMarkerKey, err)
-							continue
-						}
+			epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.EpochMarkerSet(dataMarketAddress)).Result()
+			if err != nil {
+				log.Errorf("Failed to fetch epoch markers for data market %s during cleanup: %s", dataMarketAddress, err)
+				return
+			}
 
-						// Remove stale epoch markers if the submission limit block has passed
-						if currentBlockNum > epochMarkerDetails.SubmissionLimitBlockNumber {
-							log.Infof("🗑️ Removing stale epoch marker key %s for data market %s", epochMarkerKey, dataMarketAddress)
-
-							// Remove the epochID and its details from Redis
-							if err := redis.RemoveEpochFromRedis(ctx, dataMarketAddress, epochMarkerKey); err != nil {
-								log.Errorf("Failed to remove epoch %s from Redis for data market %s during cleanup: %v", epochMarkerKey, dataMarketAddress, err)
-								continue
-							}
-
-							log.Infof("✅ Successfully removed stale epoch marker key %s for data market %s", epochMarkerKey, dataMarketAddress)
-						}
-					}
+			// Process each epoch marker key for this data market address
+			for _, epochMarkerKey := range epochMarkerKeys {
+				// Retrieve the epoch marker details from Redis
+				epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
+				if err != nil {
+					log.Errorf("Failed to fetch epoch marker details for key %s during cleanup: %s", epochMarkerKey, err)
+					continue
 				}
-			}(dataMarketAddress, ctx)
-		}
 
-		// Wait for all data market goroutines to finish
-		wg.Wait()
+				var epochMarkerDetails EpochMarkerDetails
+				if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
+					log.Errorf("Failed to unmarshal epoch marker details for key %s during cleanup: %s", epochMarkerKey, err)
+					continue
+				}
 
-		log.Infof("🧹 Completed cleanup for all stale epoch markers")
+				// Remove stale epoch markers if the submission limit block has passed
+				if currentBlockNum > epochMarkerDetails.SubmissionLimitBlockNumber {
+					log.Infof("🗑️ Removing stale epoch marker key %s for data market %s", epochMarkerKey, dataMarketAddress)
+
+					// Remove the epochID and its details from Redis
+					if err := redis.RemoveEpochFromRedis(ctx, dataMarketAddress, epochMarkerKey); err != nil {
+						log.Errorf("Failed to remove epoch %s from Redis for data market %s during cleanup: %v", epochMarkerKey, dataMarketAddress, err)
+						continue
+					}
+
+					log.Infof("✅ Successfully removed stale epoch marker key %s for data market %s", epochMarkerKey, dataMarketAddress)
+				}
+			}
+		}(dataMarketAddress)
 	}
+
+	// Wait for all data market goroutines to finish
+	wg.Wait()
+
+	log.Infof("🧹 Completed cleanup for all stale epoch markers")
 }
