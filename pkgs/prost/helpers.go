@@ -111,8 +111,8 @@ func startPeriodicCleanupRoutine(cleanupCtx context.Context) {
 			// Create timeout context for block fetch
 			fetchCtx, cancel := context.WithTimeout(cleanupCtx, 30*time.Second)
 			// Fetch the latest block
+			defer cancel()
 			currentBlock, err := fetchBlock(fetchCtx, nil)
-			cancel()
 
 			if err != nil {
 				log.Errorf("Failed to fetch the latest block during cleanup routine: %s", err)
@@ -130,6 +130,7 @@ func startPeriodicCleanupRoutine(cleanupCtx context.Context) {
 
 // startPeriodicCleanup cleans up stale epoch markers
 func startPeriodicCleanup(currentBlockNum int64) {
+	log.Infof("🧹 Starting periodic cleanup for stale epoch markers at block number: %d", currentBlockNum)
 	var wg sync.WaitGroup
 
 	// Cleanup for each data market in parallel
