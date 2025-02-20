@@ -177,9 +177,11 @@ func checkAndTriggerBatchPreparation(currentBlock *types.Block) {
 				// Retrieve the epoch marker details from Redis
 				epochMarkerDetailsJSON, err := redis.RedisClient.Get(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
 				if err != nil {
-					errMsg := fmt.Sprintf("Failed to fetch epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
+					errMsg := fmt.Sprintf("Failed to fetch epoch marker details from Redis for key %s: %s \n Will remove the epoch marker key from Redis", epochMarkerKey, err)
 					clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
 					log.Error(errMsg)
+					// remove the epoch marker key from Redis
+					redis.RedisClient.SRem(context.Background(), redis.EpochMarkerSet(dataMarketAddress), epochMarkerKey)
 					continue
 				}
 
