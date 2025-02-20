@@ -232,7 +232,7 @@ func checkAndTriggerBatchPreparation(block *types.Block) {
 				return
 			}
 
-			log.Infof("Fetched %d epoch marker keys for data market %s: %v", len(epochMarkerKeys), dataMarketAddress, epochMarkerKeys)
+			log.Infof("Fetched %d epoch marker keys from cache for data market %s: %v", len(epochMarkerKeys), dataMarketAddress, epochMarkerKeys)
 
 			// Process each epoch marker key for this data market address
 			for _, epochMarkerKey := range epochMarkerKeys {
@@ -252,8 +252,6 @@ func checkAndTriggerBatchPreparation(block *types.Block) {
 					log.Error(errMsg)
 					continue
 				}
-
-				log.Debugf("📊 Epoch marker details for epoch marker key %s: %+v", epochMarkerKey, epochMarkerDetails)
 
 				// Check if the current block number matches the submission limit block number for this epoch
 				if currentBlockNum == epochMarkerDetails.SubmissionLimitBlockNumber {
