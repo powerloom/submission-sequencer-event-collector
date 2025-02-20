@@ -43,4 +43,5 @@ const (
 	ZeroCountKey                     = "ZeroCountKey"
 	LastSimulatedSubmissionKey       = "LastSimulatedSubmissionKey"
 	LastSnapshotSubmissionKey        = "LastSnapshotSubmissionKey"
+	ActiveSnapshottersForEpoch       = "ActiveSnapshottersForEpoch"
 )
