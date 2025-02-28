@@ -16,20 +16,44 @@ import (
 
 var RedisClient *redis.Client
 
+// Add configuration struct
+type RedisConfig struct {
+	Host         string
+	Port         string
+	DB           int
+	PoolSize     int
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	DialTimeout  time.Duration
+	IdleTimeout  time.Duration
+}
+
 func NewRedisClient() *redis.Client {
 	db, err := strconv.Atoi(config.SettingsObj.RedisDB)
 	if err != nil {
 		log.Fatalf("Incorrect redis db: %s", err.Error())
 	}
-	return redis.NewClient(&redis.Options{
-		Addr:         fmt.Sprintf("%s:%s", config.SettingsObj.RedisHost, config.SettingsObj.RedisPort), // Redis server address
-		Password:     "",                                                                               // no password set
+
+	cfg := RedisConfig{
+		Host:         config.SettingsObj.RedisHost,
+		Port:         config.SettingsObj.RedisPort,
 		DB:           db,
 		PoolSize:     1000,
-		ReadTimeout:  200 * time.Millisecond,
-		WriteTimeout: 200 * time.Millisecond,
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 2 * time.Second,
 		DialTimeout:  5 * time.Second,
 		IdleTimeout:  5 * time.Minute,
+	}
+
+	return redis.NewClient(&redis.Options{
+		Addr:         fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
+		Password:     "",
+		DB:           cfg.DB,
+		PoolSize:     cfg.PoolSize,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		DialTimeout:  cfg.DialTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
 	})
 }
 
@@ -45,7 +69,7 @@ func GetSetKeys(ctx context.Context, set string) []string {
 }
 
 func RemoveFromSet(ctx context.Context, set, key string) error {
-	return RedisClient.SRem(context.Background(), set, key).Err()
+	return RedisClient.SRem(ctx, set, key).Err()
 }
 
 func Delete(ctx context.Context, set string) error {
@@ -149,14 +173,17 @@ func GetDailySnapshotQuota(ctx context.Context, dataMarketAddress string) (*big.
 
 // StoreEpochDetails stores the epoch ID in the master set and its associated details in Redis
 func StoreEpochDetails(ctx context.Context, dataMarketAddress, epochID, details string) error {
-	// Store the epoch ID in the master set
-	if err := AddToSet(ctx, EpochMarkerSet(dataMarketAddress), epochID); err != nil {
-		return fmt.Errorf("failed to add epoch %s to master set for data market %s: %w", epochID, dataMarketAddress, err)
-	}
+	pipe := RedisClient.TxPipeline()
 
-	// Store the details for the specified epochID related to the given data market in Redis
-	if err := Set(ctx, EpochMarkerDetails(dataMarketAddress, epochID), details); err != nil {
-		return fmt.Errorf("failed to store epoch marker details for epoch %s, data market %s in Redis: %w", epochID, dataMarketAddress, err)
+	// Add commands to pipeline
+	pipe.SAdd(ctx, EpochMarkerSet(dataMarketAddress), epochID)
+	pipe.Set(ctx, EpochMarkerDetails(dataMarketAddress, epochID), details, 0)
+
+	// Execute pipeline
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to store epoch details for epoch %s, data market %s: %w",
+			epochID, dataMarketAddress, err)
 	}
 
 	return nil
@@ -230,4 +257,17 @@ func GetEpochsInADay(ctx context.Context, dataMarketAddress string) (*big.Int, e
 	}
 
 	return epochsInADay, nil
+}
+
+// Add new helper functions for Redis list operations
+func LPush(ctx context.Context, key string, value interface{}) *redis.IntCmd {
+	return RedisClient.LPush(ctx, key, value)
+}
+
+func RPush(ctx context.Context, key string, value interface{}) *redis.IntCmd {
+	return RedisClient.RPush(ctx, key, value)
+}
+
+func LPop(ctx context.Context, key string) *redis.StringCmd {
+	return RedisClient.LPop(ctx, key)
 }

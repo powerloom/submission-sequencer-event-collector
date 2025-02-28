@@ -10,6 +10,10 @@ func GetDaySizeTableKey() string {
 	return pkgs.DaySizeTableKey
 }
 
+func CurrentEpoch(dataMarketAddress string) string {
+	return fmt.Sprintf("%s.%s", strings.ToLower(dataMarketAddress), pkgs.CurrentEpoch)
+}
+
 func GetDailySnapshotQuotaTableKey() string {
 	return pkgs.DailySnapshotQuotaTableKey
 }

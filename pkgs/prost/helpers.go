@@ -15,18 +15,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// getValidSubmissionKeys retrieves valid submission keys for the given epoch and headers
 func getValidSubmissionKeys(ctx context.Context, epochID uint64, headers []string, dataMarketAddress string) ([]string, error) {
-	// Initialize an empty slice to store valid submission keys
-	submissionKeys := make([]string, 0)
+	// Store valid submission keys
+	var submissionKeys []string
 
-	// Iterate through the list of headers
+	// Process each header to get its submission keys
 	for _, header := range headers {
-		keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(dataMarketAddress, epochID, header)).Val()
-		if len(keys) > 0 {
-			submissionKeys = append(submissionKeys, keys...)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			// Get all submission keys for this header from Redis
+			keys := redis.RedisClient.SMembers(ctx, redis.SubmissionSetByHeaderKey(dataMarketAddress, epochID, header)).Val()
+			if len(keys) > 0 {
+				submissionKeys = append(submissionKeys, keys...)
+			}
 		}
 	}
-
 	return submissionKeys, nil
 }
 
@@ -80,30 +86,34 @@ func arrangeSubmissionKeysInBatches(projectMap map[string][]string) []map[string
 
 // fetchEligibleSlotIDs returns the slot IDs and their count for a given data market and day.
 // SlotIDs with eligible submission counts greater than equal to daily snapshot quota are stored.
-func fetchEligibleSlotIDs(dataMarketAddress, day string) (int, []string) {
+func fetchEligibleSlotIDs(ctx context.Context, dataMarketAddress, day string) (int, []string) {
 	// Build the Redis key to fetch the slotIDs for the specified day
 	eligibleNodesSetKey := redis.EligibleNodesByDayKey(dataMarketAddress, day)
 
 	// Retrieve the slot IDs stored in the set associated with the Redis key
-	slotIDs := redis.GetSetKeys(context.Background(), eligibleNodesSetKey)
+	slotIDs := redis.GetSetKeys(ctx, eligibleNodesSetKey)
 
 	// Return the slot IDs and their count
 	return len(slotIDs), slotIDs
 }
 
-// startPeriodicCleanupRoutine calls startPeriodicCleanup every 10 minutes
-func startPeriodicCleanupRoutine(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Minute) // Configurable interval
+// startPeriodicCleanupRoutine runs a periodic cleanup every 10 minutes
+func startPeriodicCleanupRoutine(cleanupCtx context.Context) {
+	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-cleanupCtx.Done():
 			log.Info("⏹️ Periodic cleanup routine stopped")
 			return
 		case <-ticker.C:
-			// Fetch the current block dynamically
-			currentBlock, err := fetchBlock(nil)
+			// Create timeout context for block fetch
+			fetchCtx, cancel := context.WithTimeout(cleanupCtx, 30*time.Second)
+			// Fetch the latest block
+			defer cancel()
+			currentBlock, err := fetchBlock(fetchCtx, nil)
+
 			if err != nil {
 				log.Errorf("Failed to fetch the latest block during cleanup routine: %s", err)
 				continue
@@ -112,7 +122,7 @@ func startPeriodicCleanupRoutine(ctx context.Context) {
 			currentBlockNum := currentBlock.Number().Int64()
 			log.Infof("Starting periodic cleanup for stale epoch markers at block number: %d", currentBlockNum)
 
-			// Perform the cleanup
+			// Trigger the cleanup process
 			startPeriodicCleanup(currentBlockNum)
 		}
 	}
@@ -120,6 +130,7 @@ func startPeriodicCleanupRoutine(ctx context.Context) {
 
 // startPeriodicCleanup cleans up stale epoch markers
 func startPeriodicCleanup(currentBlockNum int64) {
+	log.Infof("🧹 Starting periodic cleanup for stale epoch markers at block number: %d", currentBlockNum)
 	var wg sync.WaitGroup
 
 	// Cleanup for each data market in parallel
@@ -129,16 +140,23 @@ func startPeriodicCleanup(currentBlockNum int64) {
 		go func(dataMarketAddress string) {
 			defer wg.Done()
 
-			log.Infof("🏁 Starting cleanup for stale epoch markers for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
+			// Create new context with appropriate timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 
-			epochMarkerKeys, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
+			log.Infof("🏁 Starting cleanup for stale epoch markers for data market %s at block number: %d",
+				dataMarketAddress, currentBlockNum)
+
+			epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.EpochMarkerSet(dataMarketAddress)).Result()
 			if err != nil {
 				log.Errorf("Failed to fetch epoch markers for data market %s during cleanup: %s", dataMarketAddress, err)
 				return
 			}
 
+			// Process each epoch marker key for this data market address
 			for _, epochMarkerKey := range epochMarkerKeys {
-				epochMarkerDetailsJSON, err := redis.RedisClient.Get(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
+				// Retrieve the epoch marker details from Redis
+				epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
 				if err != nil {
 					log.Errorf("Failed to fetch epoch marker details for key %s during cleanup: %s", epochMarkerKey, err)
 					continue
@@ -155,7 +173,7 @@ func startPeriodicCleanup(currentBlockNum int64) {
 					log.Infof("🗑️ Removing stale epoch marker key %s for data market %s", epochMarkerKey, dataMarketAddress)
 
 					// Remove the epochID and its details from Redis
-					if err := redis.RemoveEpochFromRedis(context.Background(), dataMarketAddress, epochMarkerKey); err != nil {
+					if err := redis.RemoveEpochFromRedis(ctx, dataMarketAddress, epochMarkerKey); err != nil {
 						log.Errorf("Failed to remove epoch %s from Redis for data market %s during cleanup: %v", epochMarkerKey, dataMarketAddress, err)
 						continue
 					}

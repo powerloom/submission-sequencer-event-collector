@@ -17,6 +17,7 @@ const (
 
 // General Key Constants
 const (
+	CurrentEpoch                     = "CurrentEpochID"
 	CurrentDayKey                    = "CurrentDayKey"
 	TotalNodesCount                  = "TotalNodesCount"
 	DaySizeTableKey                  = "DaySizeTableKey"

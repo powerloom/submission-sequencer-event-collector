@@ -187,12 +187,12 @@ type Response[K any] struct {
 	RequestID string      `json:"requestID"`
 }
 
-func getDailyTotalSubmission(dataMarketAddress string, slotID int, day *big.Int) int64 {
+func getDailyTotalSubmission(ctx context.Context, dataMarketAddress string, slotID int, day *big.Int) int64 {
 	// Construct the key for fetching total submissions from Redis
 	key := redis.SlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())
 
 	// Attempt to get the value from Redis
-	val, err := redis.Get(context.Background(), key)
+	val, err := redis.Get(ctx, key)
 	if err != nil {
 		log.Errorf("Failed to fetch total submissions for key %s: %v", key, err)
 		return 0
@@ -213,9 +213,9 @@ func getDailyTotalSubmission(dataMarketAddress string, slotID int, day *big.Int)
 	return 0
 }
 
-func getDailyEligibleSubmission(dataMarketAddress string, slotID int, day *big.Int) int64 {
-	if val, err := redis.Get(context.Background(), redis.EligibleSlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())); err != nil || val == "" {
-		subs, err := prost.MustQuery[*big.Int](context.Background(), func() (*big.Int, error) {
+func getDailyEligibleSubmission(ctx context.Context, dataMarketAddress string, slotID int, day *big.Int) int64 {
+	if val, err := redis.Get(ctx, redis.EligibleSlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())); err != nil || val == "" {
+		subs, err := prost.MustQuery[*big.Int](ctx, func() (*big.Int, error) {
 			subs, err := prost.Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), day)
 			return subs, err
 		})
@@ -231,20 +231,20 @@ func getDailyEligibleSubmission(dataMarketAddress string, slotID int, day *big.I
 	}
 }
 
-func getEligibleSlotIDs(dataMarketAddress string, day *big.Int) []string {
+func getEligibleSlotIDs(ctx context.Context, dataMarketAddress string, day *big.Int) []string {
 	// Construct the key for fetching eligible slotIDs from Redis
 	key := redis.EligibleNodesByDayKey(dataMarketAddress, day.String())
 
 	// Attempt to get the set values from Redis
-	eligibleSlotIDs := redis.GetSetKeys(context.Background(), key)
+	eligibleSlotIDs := redis.GetSetKeys(ctx, key)
 
 	// Return the list of slotIDs
 	return eligibleSlotIDs
 }
 
-func getEpochSubmissions(epochSubmissionKey string) (map[string]string, error) {
+func getEpochSubmissions(ctx context.Context, epochSubmissionKey string) (map[string]string, error) {
 	// Use HGetAll to retrieve all key-value pairs in the hash
-	submissions, err := redis.RedisClient.HGetAll(context.Background(), epochSubmissionKey).Result()
+	submissions, err := redis.RedisClient.HGetAll(ctx, epochSubmissionKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch epoch submission details from Redis: %v", err)
 	}
@@ -299,7 +299,7 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	day, err := prost.FetchCurrentDay(r.Context(), common.HexToAddress(request.DataMarketAddress))
 	if err != nil {
 		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
 		return
@@ -319,13 +319,13 @@ func handleTotalSubmissions(w http.ResponseWriter, r *http.Request) {
 
 	for i := 0; i < request.PastDays; i++ {
 		wg.Add(1)
-		go func(i int) {
+		go func(i int, ctx context.Context) {
 			defer wg.Done()
 			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
-			eligibleSubs := getDailyEligibleSubmission(request.DataMarketAddress, request.SlotID, day)
-			totalSubs := getDailyTotalSubmission(request.DataMarketAddress, request.SlotID, day)
+			eligibleSubs := getDailyEligibleSubmission(ctx, request.DataMarketAddress, request.SlotID, day)
+			totalSubs := getDailyTotalSubmission(ctx, request.DataMarketAddress, request.SlotID, day)
 			ch <- DailySubmissions{Day: int(day.Int64()), EligibleSubmissions: eligibleSubs, TotalSubmissions: totalSubs}
-		}(i)
+		}(i, r.Context())
 	}
 
 	go func() {
@@ -397,7 +397,7 @@ func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	day, err := prost.FetchCurrentDay(r.Context(), common.HexToAddress(request.DataMarketAddress))
 	if err != nil {
 		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
 		return
@@ -425,7 +425,7 @@ func handleEligibleNodesCountPastDays(w http.ResponseWriter, r *http.Request) {
 		go func(i int) {
 			defer wg.Done()
 			day := new(big.Int).Sub(currentDay, big.NewInt(int64(i)))
-			slotIDs := getEligibleSlotIDs(request.DataMarketAddress, day) // Fetch eligible slot IDs for the day
+			slotIDs := getEligibleSlotIDs(r.Context(), request.DataMarketAddress, day) // Fetch eligible slot IDs for the day
 
 			// Construct EligibleNodes object
 			eligibleNode := EligibleNodes{
@@ -508,7 +508,7 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	day, err := prost.FetchCurrentDay(r.Context(), common.HexToAddress(request.DataMarketAddress))
 	if err != nil {
 		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
 		return
@@ -525,7 +525,7 @@ func handleEligibleNodesCount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch eligible slot IDs for the specified day
-	slotIDs := getEligibleSlotIDs(request.DataMarketAddress, new(big.Int).SetInt64(int64(request.Day)))
+	slotIDs := getEligibleSlotIDs(r.Context(), request.DataMarketAddress, new(big.Int).SetInt64(int64(request.Day)))
 
 	// Construct the response object
 	eligibleNodesResponse := EligibleNodes{
@@ -604,7 +604,7 @@ func handleBatchCount(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the batch count from Redis
 	batchCountKey := redis.GetBatchCountKey(request.DataMarketAddress, strconv.Itoa(request.EpochID))
-	batchCountStr, err := redis.Get(context.Background(), batchCountKey)
+	batchCountStr, err := redis.Get(r.Context(), batchCountKey)
 	if err != nil {
 		http.Error(w, "Internal Server Error: Failed to fetch batch count", http.StatusInternalServerError)
 		return
@@ -681,7 +681,7 @@ func handleEpochSubmissionDetails(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the epoch submission count from Redis
 	submissionCountKey := redis.EpochSubmissionsCount(request.DataMarketAddress, uint64(request.EpochID))
-	submissionCountStr, err := redis.Get(context.Background(), submissionCountKey)
+	submissionCountStr, err := redis.Get(r.Context(), submissionCountKey)
 	if err != nil {
 		http.Error(w, "Internal Server Error: Failed to fetch epoch submission count", http.StatusInternalServerError)
 		return
@@ -696,7 +696,7 @@ func handleEpochSubmissionDetails(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the epoch submission details from Redis
 	epochSubmissionsKey := redis.EpochSubmissionsKey(request.DataMarketAddress, uint64(request.EpochID))
-	epochSubmissionDetails, err := getEpochSubmissions(epochSubmissionsKey)
+	epochSubmissionDetails, err := getEpochSubmissions(r.Context(), epochSubmissionsKey)
 	if err != nil {
 		http.Error(w, "Internal Server Error: Failed to fetch epoch submission details", http.StatusInternalServerError)
 		return
@@ -807,7 +807,7 @@ func handleEligibleSlotSubmissionCount(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve all slotIDs and their counts for the given epochID
 	eligibleSlotSubmissionByEpochKey := redis.EligibleSlotSubmissionsByEpochKey(request.DataMarketAddress, strconv.Itoa(day), strconv.Itoa(request.EpochID))
-	slotCounts, err := redis.RedisClient.HGetAll(context.Background(), eligibleSlotSubmissionByEpochKey).Result()
+	slotCounts, err := redis.RedisClient.HGetAll(r.Context(), eligibleSlotSubmissionByEpochKey).Result()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal Server Error: Failed to fetch eligible submission counts for epoch %v", epochID), http.StatusInternalServerError)
 		return
@@ -909,8 +909,10 @@ func handleDiscardedSubmissionsByEpoch(w http.ResponseWriter, r *http.Request) {
 	// Construct the Redis key for the discarded submission details
 	discardedKey := redis.DiscardedSubmissionsKey(request.DataMarketAddress, strconv.Itoa(day), strconv.Itoa(epochID))
 
-	// Fetch all the project details from the Redis hash
-	discardedDetailsMap, err := redis.RedisClient.HGetAll(context.Background(), discardedKey).Result()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	discardedDetailsMap, err := redis.RedisClient.HGetAll(ctx, discardedKey).Result()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal Server Error: Failed to fetch discarded submission details from Redis for epoch %v", epochID), http.StatusInternalServerError)
 		return
@@ -998,7 +1000,7 @@ func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	day, err := prost.FetchCurrentDay(common.HexToAddress(request.DataMarketAddress))
+	day, err := prost.FetchCurrentDay(r.Context(), common.HexToAddress(request.DataMarketAddress))
 	if err != nil {
 		http.Error(w, "Failed to fetch current day", http.StatusBadRequest)
 		return
@@ -1024,7 +1026,7 @@ func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 	discardedKey := redis.DiscardedSubmissionsByDayKey(request.DataMarketAddress, strconv.Itoa(request.Day))
 
 	// Fetch all entries from the hashtable
-	results, err := redis.RedisClient.HGetAll(context.Background(), discardedKey).Result()
+	results, err := redis.RedisClient.HGetAll(r.Context(), discardedKey).Result()
 	if err != nil {
 		log.Errorf("Failed to fetch discarded submission details from Redis for day %s: %v", strconv.Itoa(request.Day), http.StatusInternalServerError)
 		return
@@ -1166,7 +1168,7 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the last simulated submission from Redis
 	lastSimulatedSubmissionKey := redis.LastSimulatedSubmission(request.DataMarketAddress, uint64(request.SlotID))
-	lastSimulatedSubmission, err := redis.Get(context.Background(), lastSimulatedSubmissionKey)
+	lastSimulatedSubmission, err := redis.Get(r.Context(), lastSimulatedSubmissionKey)
 	if err != nil || lastSimulatedSubmission == "" {
 		http.Error(w, "Failed to fetch last simulated submission", http.StatusInternalServerError)
 		return
@@ -1243,7 +1245,7 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the last snapshot submission from Redis
 	lastSnapshotSubmissionKey := redis.LastSnapshotSubmission(request.DataMarketAddress, uint64(request.SlotID))
-	lastSnapshotSubmission, err := redis.Get(context.Background(), lastSnapshotSubmissionKey)
+	lastSnapshotSubmission, err := redis.Get(r.Context(), lastSnapshotSubmissionKey)
 	if err != nil || lastSnapshotSubmission == "" {
 		http.Error(w, "Failed to fetch last snapshot submission", http.StatusInternalServerError)
 		return
