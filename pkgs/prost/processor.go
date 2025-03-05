@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"runtime"
 	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
@@ -21,6 +22,40 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
+)
+
+// Timeout durations for various operations
+const (
+	eventProcessingTimeout  = 30 * time.Second
+	batchPreparationTimeout = 60 * time.Second
+	marketProcessingTimeout = 30 * time.Second
+	batchProcessingTimeout  = 120 * time.Second
+)
+
+var (
+	// Worker pool size based on available CPU cores
+	workerPool = make(chan struct{}, runtime.GOMAXPROCS(0))
+
+	// Memory pools for frequently allocated slices
+	headerPool = sync.Pool{
+		New: func() any {
+			slice := make([]string, 0, 1000) // Typical block range size
+			return &slice
+		},
+	}
+	slotIDPool = sync.Pool{
+		New: func() any {
+			slice := make([]*big.Int, 0, config.SettingsObj.RewardsUpdateBatchSize)
+			return &slice
+		},
+	}
+	submissionsPool = sync.Pool{
+		New: func() any {
+			slice := make([]*big.Int, 0, config.SettingsObj.RewardsUpdateBatchSize)
+			return &slice
+		},
+	}
 )
 
 type EpochMarkerDetails struct {
@@ -57,8 +92,9 @@ type RelayerRequestBody struct {
 
 // ProcessEvents processes logs for the given block and handles the EpochReleased event
 func ProcessEvents(block *types.Block) {
-	var logs []types.Log
-	var err error
+	// Create a root context with a reasonable timeout for the entire event processing
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	hash := block.Hash()
 
@@ -68,8 +104,8 @@ func ProcessEvents(block *types.Block) {
 		Addresses: []common.Address{common.HexToAddress(config.SettingsObj.ContractAddress)},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	var logs []types.Log
+	var err error
 
 	operation := func() error {
 		logs, err = Client.FilterLogs(ctx, filterQuery)
@@ -85,204 +121,307 @@ func ProcessEvents(block *types.Block) {
 
 	log.Infof("Processing %d logs for block number %d", len(logs), block.Number().Int64())
 
+	// Create error group for coordinated error handling of log processing
+	g, ctx := errgroup.WithContext(ctx)
+
 	// Process the logs for the current block
 	for _, vLog := range logs {
-		// Check the event signature and handle the `EpochReleased` event
-		switch vLog.Topics[0].Hex() {
-		case ContractABI.Events["EpochReleased"].ID.Hex():
-			log.Debugf("EpochReleased event detected in block %d", block.Number().Int64())
+		vLog := vLog // Create new variable for goroutine
+		g.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				// Check the event signature and handle the `EpochReleased` event
+				switch vLog.Topics[0].Hex() {
+				case ContractABI.Events["EpochReleased"].ID.Hex():
+					log.Debugf("EpochReleased event detected in block %d", block.Number().Int64())
 
-			// Parse the `EpochReleased` event from the log
-			releasedEvent, err := Instance.ParseEpochReleased(vLog)
-			if err != nil {
-				errorMsg := fmt.Sprintf("Epoch release parse error for block %d: %s", block.Number().Int64(), err.Error())
-				clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
-				log.Error(errorMsg)
-				continue
-			}
+					// Parse the `EpochReleased` event from the log
+					releasedEvent, err := Instance.ParseEpochReleased(vLog)
+					if err != nil {
+						errorMsg := fmt.Sprintf("Epoch release parse error for block %d: %s", block.Number().Int64(), err.Error())
+						clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
+						log.Error(errorMsg)
+						return fmt.Errorf("failed to parse epoch released event: %w", err)
+					}
 
-			// Check if the DataMarketAddress in the event matches any address in the DataMarketAddress array
-			if isValidDataMarketAddress(releasedEvent.DataMarketAddress.Hex()) {
-				// Extract the epoch ID and the data market address from the event
-				newEpochID := releasedEvent.EpochId
-				dataMarketAddress := releasedEvent.DataMarketAddress.Hex()
+					// Check if the DataMarketAddress in the event matches any address in the DataMarketAddress array
+					if isValidDataMarketAddress(releasedEvent.DataMarketAddress.Hex()) {
+						// Extract the epoch ID and the data market address from the event
+						newEpochID := releasedEvent.EpochId
+						dataMarketAddress := releasedEvent.DataMarketAddress.Hex()
 
-				log.Debugf("Detected epoch released event at block %d for data market %s with epochID %s", block.Header().Number, dataMarketAddress, newEpochID.String())
+						log.Debugf("Detected epoch released event at block %d for data market %s with epochID %s", block.Header().Number, dataMarketAddress, newEpochID.String())
 
-				// Calculate the submission limit block based on the epoch release block number (current block number)
-				submissionLimitBlockNumber, err := calculateSubmissionLimitBlock(ctx, dataMarketAddress, new(big.Int).Set(block.Number()))
-				if err != nil {
-					log.Errorf("Failed to calculate submission limit block number for data market %s, epoch ID %s, block %d: %s", dataMarketAddress, newEpochID.String(), block.Number().Int64(), err.Error())
-					continue
-				}
+						// Calculate the submission limit block based on the epoch release block number (current block number)
+						submissionLimitBlockNumber, err := calculateSubmissionLimitBlock(ctx, dataMarketAddress, new(big.Int).Set(block.Number()))
+						if err != nil {
+							log.Errorf("Failed to calculate submission limit block number for data market %s, epoch ID %s, block %d: %s", dataMarketAddress, newEpochID.String(), block.Number().Int64(), err.Error())
+							return fmt.Errorf("failed to calculate submission limit block: %w", err)
+						}
 
-				log.Infof("Calculated Submission Limit Block Number for epochID %s, data market %s: %d", newEpochID.String(), dataMarketAddress, submissionLimitBlockNumber.Int64())
+						log.Infof("Calculated Submission Limit Block Number for epochID %s, data market %s: %d", newEpochID.String(), dataMarketAddress, submissionLimitBlockNumber.Int64())
 
-				// Send updateRewards to relayer when current epoch is a multiple of epoch interval (config param)
-				if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
-					// Send periodic updateRewards to relayer throughtout the day
-					if err := sendRewardUpdates(dataMarketAddress, newEpochID.String()); err != nil {
-						errMsg := fmt.Sprintf("Failed to send reward updates for epoch %s within data market %s: %v", newEpochID.String(), dataMarketAddress, err)
-						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errMsg, time.Now().String(), "High")
-						log.Error(errMsg)
-						continue
+						// Send updateRewards to relayer when current epoch is a multiple of epoch interval (config param)
+						if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
+							// Send periodic updateRewards to relayer throughtout the day
+							if err := sendRewardUpdates(dataMarketAddress, newEpochID.String()); err != nil {
+								errMsg := fmt.Sprintf("Failed to send reward updates for epoch %s within data market %s: %v", newEpochID.String(), dataMarketAddress, err)
+								clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errMsg, time.Now().String(), "High")
+								log.Error(errMsg)
+								return fmt.Errorf("failed to send reward updates: %w", err)
+							}
+						}
+
+						// Prepare the epoch marker details
+						epochMarkerDetails := EpochMarkerDetails{
+							EpochReleaseBlockNumber:    block.Number().Int64(),
+							SubmissionLimitBlockNumber: submissionLimitBlockNumber.Int64(),
+						}
+
+						epochMarkerDetailsJSON, err := json.Marshal(epochMarkerDetails)
+						if err != nil {
+							errorMsg := fmt.Sprintf("Failed to marshal epoch marker details for data market %s, epochID %s: %s", dataMarketAddress, newEpochID.String(), err.Error())
+							clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
+							log.Error(errorMsg)
+							return fmt.Errorf("failed to marshal epoch marker details: %w", err)
+						}
+
+						// Store the details associated with the new epoch in Redis
+						if err := redis.StoreEpochDetails(ctx, dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON)); err != nil {
+							errorMsg := fmt.Sprintf("Failed to store epoch marker details for epochID %s, data market %s in Redis: %s", newEpochID.String(), dataMarketAddress, err.Error())
+							clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
+							log.Error(errorMsg)
+							return fmt.Errorf("failed to store epoch marker details: %w", err)
+						}
+
+						log.Infof("✅ Successfully stored epoch marker details for epochID %s, data market %s in Redis", newEpochID.String(), dataMarketAddress)
+					}
+
+				case ContractABI.Events["SnapshotBatchSubmitted"].ID.Hex():
+					log.Debugf("SnapshotBatchSubmitted event detected in block %d", block.Number().Int64())
+
+					// Parse the `SnapshotBatchSubmitted` event from the log
+					releasedEvent, err := Instance.ParseSnapshotBatchSubmitted(vLog)
+					if err != nil {
+						errorMsg := fmt.Sprintf("Failed to parse SnapshotBatchSubmitted event for block %d: %s", block.Number().Int64(), err.Error())
+						clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
+						log.Error(errorMsg)
+						return fmt.Errorf("failed to parse snapshot batch submitted event: %w", err)
+					}
+
+					// Check if the DataMarketAddress in the event matches any address in the DataMarketAddress array
+					if isValidDataMarketAddress(releasedEvent.DataMarketAddress.Hex()) {
+						// Extract the epoch ID and the data market address from the event
+						epochID := releasedEvent.EpochId
+						dataMarketAddress := releasedEvent.DataMarketAddress.Hex()
+
+						// Create an instance of batch details
+						batch := BatchDetails{
+							EpochID:           epochID,
+							DataMarketAddress: dataMarketAddress,
+							BatchCID:          releasedEvent.BatchCid,
+						}
+
+						// Serialize the struct to JSON
+						jsonData, err := json.Marshal(batch)
+						if err != nil {
+							errMsg := fmt.Sprintf("Serialization failed for batch details of epoch %s, data market %s: %v", epochID.String(), dataMarketAddress, err)
+							clients.SendFailureNotification(pkgs.ProcessEvents, err.Error(), time.Now().String(), "High")
+							log.Error(errMsg)
+							return fmt.Errorf("failed to marshal batch details: %w", err)
+						}
+
+						if config.SettingsObj.AttestorQueuePushEnabled {
+							// Push the serialized data to Redis
+							if err = redis.LPush(ctx, "attestorQueue", jsonData).Err(); err != nil {
+								errMsg := fmt.Sprintf("Error pushing batch details to attestor queue in Redis for epoch %s, data market %s: %v",
+									epochID.String(), dataMarketAddress, err)
+								clients.SendFailureNotification(pkgs.ProcessEvents, errMsg, time.Now().String(), "High")
+								log.Error(errMsg)
+								return fmt.Errorf("failed to push batch details to attestor queue: %w", err)
+							}
+						}
+
+						log.Infof("✅ Batch details successfully pushed to Redis for epoch %s in data market %s", epochID.String(), dataMarketAddress)
 					}
 				}
-
-				// Prepare the epoch marker details
-				epochMarkerDetails := EpochMarkerDetails{
-					EpochReleaseBlockNumber:    block.Number().Int64(),
-					SubmissionLimitBlockNumber: submissionLimitBlockNumber.Int64(),
-				}
-
-				epochMarkerDetailsJSON, err := json.Marshal(epochMarkerDetails)
-				if err != nil {
-					errorMsg := fmt.Sprintf("Failed to marshal epoch marker details for data market %s, epochID %s: %s", dataMarketAddress, newEpochID.String(), err.Error())
-					clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
-					log.Error(errorMsg)
-					continue
-				}
-
-				// Store the details associated with the new epoch in Redis
-				if err := redis.StoreEpochDetails(ctx, dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON)); err != nil {
-					errorMsg := fmt.Sprintf("Failed to store epoch marker details for epochID %s, data market %s in Redis: %s", newEpochID.String(), dataMarketAddress, err.Error())
-					clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
-					log.Error(errorMsg)
-				}
-
-				log.Infof("✅ Successfully stored epoch marker details for epochID %s, data market %s in Redis", newEpochID.String(), dataMarketAddress)
+				return nil
 			}
+		})
+	}
 
-		case ContractABI.Events["SnapshotBatchSubmitted"].ID.Hex():
-			log.Debugf("SnapshotBatchSubmitted event detected in block %d", block.Number().Int64())
-
-			// Parse the `SnapshotBatchSubmitted` event from the log
-			releasedEvent, err := Instance.ParseSnapshotBatchSubmitted(vLog)
-			if err != nil {
-				errorMsg := fmt.Sprintf("Failed to parse SnapshotBatchSubmitted event for block %d: %s", block.Number().Int64(), err.Error())
-				clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
-				log.Error(errorMsg)
-				continue
-			}
-
-			// Check if the DataMarketAddress in the event matches any address in the DataMarketAddress array
-			if isValidDataMarketAddress(releasedEvent.DataMarketAddress.Hex()) {
-				// Extract the epoch ID and the data market address from the event
-				epochID := releasedEvent.EpochId
-				dataMarketAddress := releasedEvent.DataMarketAddress.Hex()
-
-				// Create an instance of batch details
-				batch := BatchDetails{
-					EpochID:           epochID,
-					DataMarketAddress: dataMarketAddress,
-					BatchCID:          releasedEvent.BatchCid,
-				}
-
-				// Serialize the struct to JSON
-				jsonData, err := json.Marshal(batch)
-				if err != nil {
-					errMsg := fmt.Sprintf("Serialization failed for batch details of epoch %s, data market %s: %v", epochID.String(), dataMarketAddress, err)
-					clients.SendFailureNotification(pkgs.ProcessEvents, err.Error(), time.Now().String(), "High")
-					log.Error(errMsg)
-					continue
-				}
-
-				if config.SettingsObj.AttestorQueuePushEnabled {
-					// Push the serialized data to Redis
-					if err = redis.LPush(ctx, "attestorQueue", jsonData).Err(); err != nil {
-						errMsg := fmt.Sprintf("Error pushing batch details to attestor queue in Redis for epoch %s, data market %s: %v",
-							epochID.String(), dataMarketAddress, err)
-						clients.SendFailureNotification(pkgs.ProcessEvents, errMsg, time.Now().String(), "High")
-						log.Error(errMsg)
-						continue
-					}
-				}
-
-				log.Infof("✅ Batch details successfully pushed to Redis for epoch %s in data market %s", epochID.String(), dataMarketAddress)
-			}
+	// Wait for all log processing to complete
+	if err := g.Wait(); err != nil {
+		if err != context.Canceled && err != context.DeadlineExceeded {
+			log.Errorf("Error processing logs: %v", err)
 		}
 	}
 }
 
 func checkAndTriggerBatchPreparation(block *types.Block) {
+	// Create a root context with a reasonable timeout for the entire batch preparation
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	currentBlockNum := block.Number().Int64()
 	log.Infof("🔍 Starting batch preparation check for block number: %d", currentBlockNum)
 
-	var wg sync.WaitGroup
+	// Create error group for coordinated error handling
+	g, ctx := errgroup.WithContext(ctx)
 
-	// Fetch and process epoch markers set concurrently for each data market address
+	// Process each data market address concurrently
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		wg.Add(1)
+		dataMarketAddress := dataMarketAddress // Create new variable for goroutine
+		g.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case workerPool <- struct{}{}: // Acquire worker with context awareness
+				defer func() { <-workerPool }() // Release worker
 
-		go func(dataMarketAddress string) {
-			defer wg.Done()
+				// Create new context with appropriate timeout for this market
+				marketCtx, marketCancel := context.WithTimeout(ctx, 30*time.Second)
+				defer marketCancel()
 
-			// Create new context with appropriate timeout
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
-
-			// Fetch all the epoch marker keys from Redis for this data market address
-			epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.EpochMarkerSet(dataMarketAddress)).Result()
-			if err != nil {
-				errMsg := fmt.Sprintf("Failed to fetch epoch markers from Redis for data market %s: %s", dataMarketAddress, err)
-				clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
-				log.Error(errMsg)
-				return
-			}
-
-			log.Infof("Fetched %d epoch marker keys from cache for data market %s: %v", len(epochMarkerKeys), dataMarketAddress, epochMarkerKeys)
-
-			// Process each epoch marker key for this data market address
-			for _, epochMarkerKey := range epochMarkerKeys {
-				// Retrieve the epoch marker details from Redis
-				epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
-				if err != nil {
-					errMsg := fmt.Sprintf("Failed to fetch epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
-					clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
-					log.Error(errMsg)
-					continue
-				}
-
-				var epochMarkerDetails EpochMarkerDetails
-				if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
-					errMsg := fmt.Sprintf("Failed to unmarshal epoch marker details for key %s: %s", epochMarkerKey, err)
-					clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
-					log.Error(errMsg)
-					continue
-				}
-
-				// Check if the current block number matches the submission limit block number for this epoch
-				if currentBlockNum == epochMarkerDetails.SubmissionLimitBlockNumber {
-					log.Infof("🔄 Initiating batch preparation for epoch %s, data market %s at submission limit block number: %d", epochMarkerKey, dataMarketAddress, currentBlockNum)
-
-					// Convert the epoch ID string to big.Int for further processing
-					epochID, ok := big.NewInt(0).SetString(epochMarkerKey, 10)
-					if !ok {
-						log.Errorf("Failed to convert epochID %s to big.Int for data market %s", epochMarkerKey, dataMarketAddress)
-						continue
+				log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
+				if err := processMarketData(marketCtx, dataMarketAddress, currentBlockNum); err != nil {
+					if err != context.Canceled && err != context.DeadlineExceeded {
+						log.Errorf("Failed to process market data for %s: %v", dataMarketAddress, err)
+						return err
 					}
-
-					// When launching triggerBatchPreparation, give it its own context
-					go func(dataMarketAddress string, epochID *big.Int, releaseBlockNumber, currentBlockNum int64) {
-						ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-						defer cancel()
-						triggerBatchPreparation(ctx, dataMarketAddress, epochID, releaseBlockNumber, currentBlockNum)
-					}(dataMarketAddress, epochID, epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum)
 				}
+				return nil
 			}
-			log.Infof("Completed processing for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
-		}(dataMarketAddress)
+		})
 	}
 
-	// Wait for all data market goroutines to finish
-	wg.Wait()
+	// Wait for all processing to complete
+	if err := g.Wait(); err != nil {
+		if err != context.Canceled && err != context.DeadlineExceeded {
+			log.Errorf("Error in batch preparation: %v", err)
+		}
+	}
 }
 
-func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epochID *big.Int, startBlockNum, endBlockNum int64) {
-	// Initialize a slice to store block headers (block hashes)
-	headers := make([]string, 0)
+func processMarketData(ctx context.Context, dataMarketAddress string, currentBlockNum int64) error {
+	// Panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			stack := make([]byte, 4096)
+			stack = stack[:runtime.Stack(stack, false)]
+			errMsg := fmt.Sprintf("Panic in market data processing: %v\n%s", r, stack)
+			log.Error(errMsg)
+			errAlert := fmt.Errorf("panic in market data processing: %v", r)
+			clients.SendFailureNotification(pkgs.ProcessMarketData, errAlert.Error(), time.Now().String(), "High")
+		}
+	}()
+
+	// Check context before starting
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// Fetch all the epoch marker keys from Redis for this data market address
+	epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.EpochMarkerSet(dataMarketAddress)).Result()
+	if err != nil {
+		return fmt.Errorf("failed to fetch epoch markers: %w", err)
+	}
+
+	log.Infof("Fetched %d epoch marker keys from cache for data market %s: %v", len(epochMarkerKeys), dataMarketAddress, epochMarkerKeys)
+
+	// Create error group for coordinated error handling of epoch processing
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Process each epoch marker concurrently with panic recovery
+	for _, epochMarkerKey := range epochMarkerKeys {
+		epochMarkerKey := epochMarkerKey
+		g.Go(func() (err error) {
+			// Panic recovery for each goroutine
+			defer func() {
+				if r := recover(); r != nil {
+					stack := make([]byte, 4096)
+					stack = stack[:runtime.Stack(stack, false)]
+					errMsg := fmt.Sprintf("Panic in epoch marker processing: %v\n%s", r, stack)
+					log.Error(errMsg)
+					clients.SendFailureNotification(pkgs.ProcessMarketData, errMsg, time.Now().String(), "High")
+					err = fmt.Errorf("panic in epoch marker processing: %v", r)
+				}
+			}()
+
+			// Retrieve the epoch marker details from Redis
+			epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
+			if err != nil {
+				errMsg := fmt.Sprintf("Failed to fetch epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
+				clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
+				log.Error(errMsg)
+				return fmt.Errorf("failed to fetch epoch marker details: %w", err)
+			}
+
+			var epochMarkerDetails EpochMarkerDetails
+			if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
+				errMsg := fmt.Sprintf("Failed to unmarshal epoch marker details for key %s: %s", epochMarkerKey, err)
+				clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
+				log.Error(errMsg)
+				return fmt.Errorf("failed to unmarshal epoch marker details: %w", err)
+			}
+
+			// Check if the current block number matches the submission limit block number for this epoch
+			if currentBlockNum == epochMarkerDetails.SubmissionLimitBlockNumber {
+				log.Infof("🔄 Initiating batch preparation for epoch %s, data market %s at submission limit block number: %d", epochMarkerKey, dataMarketAddress, currentBlockNum)
+
+				// Convert the epoch ID string to big.Int for further processing
+				epochID, ok := big.NewInt(0).SetString(epochMarkerKey, 10)
+				if !ok {
+					log.Errorf("Failed to convert epochID %s to big.Int for data market %s", epochMarkerKey, dataMarketAddress)
+					return fmt.Errorf("failed to convert epochID %s to big.Int", epochMarkerKey)
+				}
+
+				// Create new context for batch preparation
+				batchCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+				defer cancel()
+
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case workerPool <- struct{}{}: // Acquire worker with context awareness
+					defer func() { <-workerPool }() // Release worker
+					if err := triggerBatchPreparation(batchCtx, dataMarketAddress, epochID, epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum); err != nil {
+						return fmt.Errorf("failed to trigger batch preparation: %w", err)
+					}
+					return nil
+				}
+			}
+			return nil
+		})
+	}
+
+	// Wait for all epoch processing to complete
+	return g.Wait()
+}
+
+func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epochID *big.Int, startBlockNum, endBlockNum int64) error {
+	// Initialize headers from pool
+	headers := *(headerPool.Get().(*[]string))
+
+	// Declare err here so it's in scope for the deferred function
+	var err error
+
+	// Deferred cleanup with panic recovery
+	defer func() {
+		headerPool.Put(&headers)
+
+		if r := recover(); r != nil {
+			stack := make([]byte, 4096)
+			stack = stack[:runtime.Stack(stack, false)]
+			errMsg := fmt.Sprintf("Panic in batch preparation: %v\n%s", r, stack)
+			log.Error(errMsg)
+			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+			// Convert panic to error
+			err = fmt.Errorf("panic in batch preparation: %v", r)
+		}
+	}()
 
 	// Calculate the total number of blocks in the range
 	blockCount := endBlockNum - startBlockNum + 1
@@ -290,23 +429,29 @@ func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epoc
 
 	// Iterate through the block numbers and fetch the block headers (hashes)
 	for blockNum := startBlockNum; blockNum <= endBlockNum; blockNum++ {
-		// Generate the Redis key for the current block number
-		blockKey := redis.BlockHashByNumber(blockNum)
+		select {
+		case <-ctx.Done():
+			log.Errorf("Context cancelled while processing block headers for epoch %s in data market %s: %v", epochID.String(), dataMarketAddress, ctx.Err())
+			return ctx.Err()
+		default:
+			// Generate the Redis key for the current block number
+			blockKey := redis.BlockHashByNumber(blockNum)
 
-		// Fetch the block hash from Redis using the generated key
-		blockHashValue, err := redis.Get(ctx, blockKey)
-		if err != nil {
-			errMsg := fmt.Sprintf("Failed to fetch block hash for block %d: %s", blockNum, err.Error())
-			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
-			log.Error(errMsg)
-			continue // Skip this block and move to the next
+			// Fetch the block hash from Redis using the generated key
+			blockHashValue, err := redis.Get(ctx, blockKey)
+			if err != nil {
+				errMsg := fmt.Sprintf("Failed to fetch block hash for block %d: %s", blockNum, err.Error())
+				clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+				log.Error(errMsg)
+				return fmt.Errorf("failed to fetch block hash: %w", err)
+			}
+
+			// Convert the block hash from string to common.Hash type
+			blockHash := common.HexToHash(blockHashValue)
+
+			// Add the block hash to the headers slice
+			headers = append(headers, blockHash.Hex())
 		}
-
-		// Convert the block hash from string to common.Hash type
-		blockHash := common.HexToHash(blockHashValue)
-
-		// Add the block hash to the headers slice
-		headers = append(headers, blockHash.Hex())
 	}
 
 	log.Infof("📦 Collected %d headers for epoch %s in data market %s", len(headers), epochID.String(), dataMarketAddress)
@@ -317,6 +462,7 @@ func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epoc
 		errMsg := fmt.Sprintf("Failed to fetch submission keys for epoch %s in data market %s: %s", epochID.String(), dataMarketAddress, err.Error())
 		clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
 		log.Error(errMsg)
+		return fmt.Errorf("failed to fetch submission keys: %w", err)
 	}
 
 	log.Infof("🔑 Retrieved %d valid submission keys for epoch %s in data market %s", len(submissionKeys), epochID.String(), dataMarketAddress)
@@ -324,6 +470,7 @@ func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epoc
 	// Update total submission count for the specified data market address
 	if err := UpdateSlotSubmissionCount(epochID, dataMarketAddress, submissionKeys); err != nil {
 		log.Errorf("Failed to update slot submission counts for epoch %s in data market %s: %s", epochID, dataMarketAddress, err.Error())
+		return fmt.Errorf("failed to update slot submission counts: %w", err)
 	}
 
 	// Construct the project map [ProjectID -> SubmissionKeys]
@@ -337,6 +484,7 @@ func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epoc
 	// Store the batch count for the specified data market address in Redis
 	if err := redis.SetWithExpiration(ctx, redis.GetBatchCountKey(dataMarketAddress, epochID.String()), strconv.Itoa(len(batches)), 24*time.Hour); err != nil {
 		log.Errorf("Failed to set batch count for epoch %s, data market %s in Redis: %s", epochID.String(), dataMarketAddress, err.Error())
+		return fmt.Errorf("failed to set batch count: %w", err)
 	}
 
 	// Send the size of the batches to the external tx relayer service
@@ -344,56 +492,89 @@ func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epoc
 		errMsg := fmt.Sprintf("🚨 Failed to send submission batch size for epoch %s in data market %s to relayer: %s", epochID.String(), dataMarketAddress, err.Error())
 		clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
 		log.Error(errMsg)
+		return fmt.Errorf("failed to send batch size to relayer: %w", err)
 	}
 
 	log.Infof("📨 Batch size %d sent successfully for epoch %s in data market %s", len(batches), epochID.String(), dataMarketAddress)
 
 	// Iterate over all the batches, construct submission details for each batch,
 	// serialize them to JSON, and push the serialized data to Redis for further processing
+	batchG, batchCtx := errgroup.WithContext(ctx)
 	for i, batch := range batches {
-		// Create an instance of submission details
-		submissionDetails := SubmissionDetails{
-			EpochID:           epochID,
-			BatchID:           i + 1,
-			Batch:             batch,
-			DataMarketAddress: dataMarketAddress,
-		}
+		i, batch := i, batch
+		batchG.Go(func() (err error) {
+			// Panic recovery for each goroutine
+			defer func() {
+				if r := recover(); r != nil {
+					stack := make([]byte, 4096)
+					stack = stack[:runtime.Stack(stack, false)]
+					errMsg := fmt.Sprintf("Panic in batch %d processing: %v\n%s", i+1, r, stack)
+					log.Error(errMsg)
+					clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+					err = fmt.Errorf("panic in batch %d processing: %v", i+1, r)
+				}
+			}()
 
-		// Serialize the struct to JSON
-		jsonData, err := json.Marshal(submissionDetails)
-		if err != nil {
-			errMsg := fmt.Sprintf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
-			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
-			log.Error(errMsg)
-		}
+			select {
+			case <-batchCtx.Done():
+				return batchCtx.Err()
+			default:
+				// Create an instance of submission details
+				submissionDetails := SubmissionDetails{
+					EpochID:           epochID,
+					BatchID:           i + 1,
+					Batch:             batch,
+					DataMarketAddress: dataMarketAddress,
+				}
 
-		// Push the serialized data to Redis
-		err = redis.LPush(ctx, "finalizerQueue", jsonData).Err()
-		if err != nil {
-			errMsg := fmt.Sprintf("Error pushing submission details of batch %d to Redis for epoch %s in data market %s to finalizer queue in Redis: %v", i+1, epochID.String(), dataMarketAddress, err)
-			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
-			log.Error(errMsg)
-		}
+				// Serialize the struct to JSON
+				jsonData, err := json.Marshal(submissionDetails)
+				if err != nil {
+					errMsg := fmt.Sprintf("Serialization failed for submission details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+					clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+					log.Error(errMsg)
+					return fmt.Errorf("failed to marshal submission details: %w", err)
+				}
 
-		// Serialize the batch details to JSON
-		batchJSONData, err := json.Marshal(batch)
-		if err != nil {
-			errMsg := fmt.Sprintf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
-			clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
-			log.Error(errMsg)
-		}
+				// Push the serialized data to Redis
+				err = redis.LPush(batchCtx, "finalizerQueue", jsonData).Err()
+				if err != nil {
+					errMsg := fmt.Sprintf("Error pushing submission details of batch %d to Redis for epoch %s in data market %s to finalizer queue in Redis: %v", i+1, epochID.String(), dataMarketAddress, err)
+					clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+					log.Error(errMsg)
+					return fmt.Errorf("failed to push submission details to finalizer queue: %w", err)
+				}
 
-		// Convert the batch ID to a big integer
-		batchID := big.NewInt(int64(i + 1))
+				// Serialize the batch details to JSON
+				batchJSONData, err := json.Marshal(batch)
+				if err != nil {
+					errMsg := fmt.Sprintf("Serialization failed for batch details of batch %d, epoch %s in data market %s: %v", i+1, epochID.String(), dataMarketAddress, err)
+					clients.SendFailureNotification(pkgs.TriggerBatchPreparation, errMsg, time.Now().String(), "High")
+					log.Error(errMsg)
+					return fmt.Errorf("failed to marshal batch details: %w", err)
+				}
 
-		// Store the batch details with a key generated from dataMarketAddress, epochID, and batchID
-		if err := redis.StoreBatchDetails(ctx, dataMarketAddress, epochID.String(), batchID.String(), string(batchJSONData)); err != nil {
-			log.Errorf("Failed to store details for batch %d of epoch %s in data market %s: %v", batchID.Int64(), epochID.String(), dataMarketAddress, err)
-			continue
-		}
+				// Convert the batch ID to a big integer
+				batchID := big.NewInt(int64(i + 1))
 
-		log.Infof("✅ Batch %d successfully pushed to Redis and stored for epoch %s in data market %s", batchID.Int64(), epochID.String(), dataMarketAddress)
+				// Store the batch details with a key generated from dataMarketAddress, epochID, and batchID
+				if err := redis.StoreBatchDetails(batchCtx, dataMarketAddress, epochID.String(), batchID.String(), string(batchJSONData)); err != nil {
+					log.Errorf("Failed to store details for batch %d of epoch %s in data market %s: %v", batchID.Int64(), epochID.String(), dataMarketAddress, err)
+					return fmt.Errorf("failed to store batch details: %w", err)
+				}
+
+				log.Infof("✅ Batch %d successfully pushed to Redis and stored for epoch %s in data market %s", batchID.Int64(), epochID.String(), dataMarketAddress)
+				return nil
+			}
+		})
 	}
+
+	// Wait for all batch processing to complete
+	if err := batchG.Wait(); err != nil {
+		return fmt.Errorf("batch processing failed: %w", err)
+	}
+
+	return nil
 }
 
 // Calculate and update total submission count for a data market address
@@ -820,6 +1001,8 @@ func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList 
 	// Fetch the batch size from config
 	batchSize := config.SettingsObj.RewardsUpdateBatchSize
 	var wg sync.WaitGroup
+	errChan := make(chan error, len(slotIDs)/batchSize+1)
+
 	// Process the data in batches
 	for start := 0; start < len(slotIDs); start += batchSize {
 		end := start + batchSize
@@ -827,13 +1010,23 @@ func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList 
 			end = len(slotIDs)
 		}
 
-		slotIDsBatch := slotIDs[start:end]
-		submissionsBatch := submissionsList[start:end]
+		slotIDsBatch := slotIDPool.Get().([]*big.Int)
+		submissionsBatch := submissionsPool.Get().([]*big.Int)
+
+		// Copy data to pooled slices
+		slotIDsBatch = append(slotIDsBatch, slotIDs[start:end]...)
+		submissionsBatch = append(submissionsBatch, submissionsList[start:end]...)
 
 		wg.Add(1)
+		workerPool <- struct{}{} // Acquire worker
 		go func(start, end int, slotIDsBatch, submissionsBatch []*big.Int) {
 			defer wg.Done()
-			// Create new context for this batch
+			defer func() { <-workerPool }() // Release worker
+			defer func() {
+				slotIDPool.Put(&slotIDsBatch)
+				submissionsPool.Put(&submissionsBatch)
+			}()
+
 			batchCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
@@ -841,12 +1034,21 @@ func batchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList 
 				errorMsg := fmt.Sprintf("🚨 Relayer batch error in batch %d-%d for data market %s on day %s: %v", start, end, dataMarketAddress, currentDay, err)
 				clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 				log.Error(errorMsg)
+				errChan <- err
 			}
 		}(start, end, slotIDsBatch, submissionsBatch)
 	}
 
 	// Wait for all batches to complete
 	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
+		if err != nil {
+			log.Errorf("Batch processing error for data market %s on day %s: %v", dataMarketAddress, currentDay, err)
+		}
+	}
 
 	log.Infof("✅ Successfully sent %d batches to relayer for data market %s on day %s", len(slotIDs)/batchSize, dataMarketAddress, currentDay)
 }
