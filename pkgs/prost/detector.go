@@ -14,9 +14,7 @@ import (
 )
 
 // Context timeout constants
-const (
-	
-)
+const ()
 
 var (
 	lastProcessedBlock int64
@@ -62,6 +60,7 @@ func StartFetchingBlocks(ctx context.Context) {
 			}
 
 			currentBlockNum := header.Number.Int64()
+			lastProcessedBlock = currentBlockNum - 1
 			if currentBlockNum <= lastProcessedBlock {
 				continue // Skip if we've already processed this block
 			}
