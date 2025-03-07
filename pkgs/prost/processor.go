@@ -23,21 +23,38 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// Timeout Hierarchy:
+//
+// marketProcessingTimeout (120s)
+// └── Contains all operations for a market
+//     ├── batchPreparationTimeout (90s)
+//     │   ├── blockProcessTimeout (30s)
+//     │   ├── eventProcessingTimeout (30s)
+//     │   └── batchProcessingTimeout (30s)
+//     └── Base operations
+//         ├── redisOperationTimeout (5s)
+//         └── blockFetchTimeout (5s)
+//
+// Note: All timeouts are maximums. Operations may complete faster.
+// Redis operations and block fetches use shorter timeouts to allow
+// for retries within their parent context.
+
 // Timeout durations for various operations
 const (
-	// Individual operation timeouts
-	// Operation-specific timeouts
-	blockFetchTimeout      = 5 * time.Second
-	blockProcessTimeout    = 30 * time.Second
-	eventProcessTimeout    = 30 * time.Second
-	batchPrepareTimeout    = 60 * time.Second
-	redisOperationTimeout  = 5 * time.Second
-	eventProcessingTimeout = 30 * time.Second
-	batchProcessingTimeout = 30 * time.Second // For individual batch operations
+	// Top-level container timeout
+	marketProcessingTimeout = 120 * time.Second // Encompasses all operations for a single market
 
-	// Container operation timeouts
-	marketProcessingTimeout = 120 * time.Second // Covers entire market processing including batch preparation
-	batchPreparationTimeout = 90 * time.Second  // For the batch preparation phase within market processing
+	// Mid-level container timeout
+	batchPreparationTimeout = 90 * time.Second // For batch preparation phase within market processing
+
+	// Individual operation timeouts
+	blockProcessTimeout    = 30 * time.Second // For processing a single block
+	eventProcessingTimeout = 30 * time.Second // For processing individual events
+	batchProcessingTimeout = 30 * time.Second // For processing individual batches
+
+	// Base operation timeout
+	redisOperationTimeout = 5 * time.Second // For all Redis operations
+	blockFetchTimeout     = 5 * time.Second // For fetching a single block
 )
 
 // Note: All type definitions have been moved to types.go in the same package (prost).
