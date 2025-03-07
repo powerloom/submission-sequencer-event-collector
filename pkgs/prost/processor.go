@@ -539,7 +539,11 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 	}
 
 	// Verify and trigger updateRewards to relayer when the current epoch matches the buffer epoch for any data market
-	go sendFinalRewards(epochID)
+	go func() {
+		if err := sendFinalRewards(ctx, epochID); err != nil {
+			log.Errorf("Error sending final rewards for epoch %s: %v", epochID, err)
+		}
+	}()
 
 	// Fetch day size for the specified data market address from Redis
 	daySize, err := redis.GetDaySize(ctx, dataMarketAddress)
@@ -680,9 +684,12 @@ func sendRewardUpdates(ctx context.Context, dataMarketAddress, epochID string) e
 	return nil
 }
 
-func sendFinalRewards(currentEpoch *big.Int) {
+func sendFinalRewards(ctx context.Context, currentEpoch *big.Int) error {
 	log.Infof("🔍 Initiating day transition check for current epoch: %s", currentEpoch.String())
 	var wg sync.WaitGroup
+
+	// Create error channel to collect errors from goroutines
+	errChan := make(chan error, len(config.SettingsObj.DataMarketAddresses))
 
 	// Fetch and process day transition epoch markers set concurrently for each data market address
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
@@ -690,14 +697,15 @@ func sendFinalRewards(currentEpoch *big.Int) {
 		go func(dataMarketAddress string) {
 			defer wg.Done()
 
-			// Create independent context
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Create timeout context as child of parent context
+			timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 
 			// Process the data market
-			epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.DayRolloverEpochMarkerSet(dataMarketAddress)).Result()
+			epochMarkerKeys, err := redis.RedisClient.SMembers(timeoutCtx, redis.DayRolloverEpochMarkerSet(dataMarketAddress)).Result()
 			if err != nil {
 				log.Errorf("Failed to fetch day transition epoch markers from Redis for data market %s: %s", dataMarketAddress, err)
+				errChan <- fmt.Errorf("failed to fetch day transition epoch markers: %w", err)
 				return
 			}
 
@@ -705,63 +713,71 @@ func sendFinalRewards(currentEpoch *big.Int) {
 
 			// Process each day transition epoch marker key for this data market address
 			for _, epochMarkerKey := range epochMarkerKeys {
-				// Retrieve the day transition epoch marker details from Redis
-				epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.DayRolloverEpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
-				if err != nil {
-					log.Errorf("Failed to fetch day transition epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
-					continue
-				}
+				select {
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				default:
+					// Retrieve the day transition epoch marker details from Redis
+					epochMarkerDetailsJSON, err := redis.RedisClient.Get(timeoutCtx, redis.DayRolloverEpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
+					if err != nil {
+						log.Errorf("Failed to fetch day transition epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
+						continue
+					}
 
-				var epochMarkerDetails DayTransitionEpochInfo
-				if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
-					log.Errorf("Failed to unmarshal day transition epoch marker details for key %s: %s", epochMarkerKey, err)
-					continue
-				}
+					var epochMarkerDetails DayTransitionEpochInfo
+					if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
+						log.Errorf("Failed to unmarshal day transition epoch marker details for key %s: %s", epochMarkerKey, err)
+						continue
+					}
 
-				log.Debugf("📊 Day transition epoch marker details for key %s: %+v", epochMarkerKey, epochMarkerDetails)
+					log.Debugf("📊 Day transition epoch marker details for key %s: %+v", epochMarkerKey, epochMarkerDetails)
 
-				// Check if the current epoch matches the buffer epoch
-				if currentEpoch.Int64() == epochMarkerDetails.BufferEpoch {
-					lastKnownDay := epochMarkerDetails.LastKnownDay
+					// Check if the current epoch matches the buffer epoch
+					if currentEpoch.Int64() == epochMarkerDetails.BufferEpoch {
+						lastKnownDay := epochMarkerDetails.LastKnownDay
 
-					// Fetch the eligible nodes count and slotIDs for the last known day (prev day)
-					eligibleNodesCount, eligibleSlotIDs := fetchEligibleSlotIDs(ctx, dataMarketAddress, lastKnownDay)
+						// Fetch the eligible nodes count and slotIDs for the last known day (prev day)
+						eligibleNodesCount, eligibleSlotIDs := fetchEligibleSlotIDs(timeoutCtx, dataMarketAddress, lastKnownDay)
 
-					log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
+						log.Infof("✅ Successfully fetched eligible nodes count for data market %s on day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
 
-					// Prepare data for relayer
-					slotIDs := make([]*big.Int, 0)
-					submissionsList := make([]*big.Int, 0)
+						// Prepare data for relayer
+						slotIDs := make([]*big.Int, 0)
+						submissionsList := make([]*big.Int, 0)
 
-					for _, slotID := range eligibleSlotIDs {
-						slotIDBigInt, _ := new(big.Int).SetString(slotID, 10)
-						lastKnownDayBigInt, _ := new(big.Int).SetString(lastKnownDay, 10)
+						for _, slotID := range eligibleSlotIDs {
+							slotIDBigInt, _ := new(big.Int).SetString(slotID, 10)
+							lastKnownDayBigInt, _ := new(big.Int).SetString(lastKnownDay, 10)
 
-						var submissionCount *big.Int
-						if output, err := MustQuery(ctx, func() (*big.Int, error) {
-							return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), slotIDBigInt, lastKnownDayBigInt)
-						}); err == nil {
-							submissionCount = output
+							var submissionCount *big.Int
+							if output, err := MustQuery(timeoutCtx, func() (*big.Int, error) {
+								return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), slotIDBigInt, lastKnownDayBigInt)
+							}); err == nil {
+								submissionCount = output
+							}
+
+							slotIDs = append(slotIDs, slotIDBigInt)
+							submissionsList = append(submissionsList, submissionCount)
 						}
 
-						slotIDs = append(slotIDs, slotIDBigInt)
-						submissionsList = append(submissionsList, submissionCount)
+						// Call batchArrays with the parent context
+						batchArrays(timeoutCtx, dataMarketAddress, lastKnownDay, slotIDs, submissionsList, eligibleNodesCount)
+
+						// Remove the epochID and its day transition details from Redis
+						epochID := new(big.Int).Sub(currentEpoch, big.NewInt(int64(BufferEpochs)))
+						if err := redis.RemoveDayTransitionEpochFromRedis(timeoutCtx, dataMarketAddress, epochID.String()); err != nil {
+							log.Errorf("Error removing day transition epoch %s data from Redis for data market %s: %v", epochID.String(), dataMarketAddress, err)
+							errChan <- fmt.Errorf("failed to remove day transition epoch data: %w", err)
+						}
+
+						log.Infof("🧹 Successfully removed day transition epoch %s data from Redis for data market %s", epochID.String(), dataMarketAddress)
+
+						// Send alert message about eligible nodes count update
+						alertMsg := fmt.Sprintf("🔔 Day Transition Update: Eligible nodes count for data market %s has been updated for day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
+						clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
+						log.Info(alertMsg)
 					}
-
-					batchArrays(ctx, dataMarketAddress, lastKnownDay, slotIDs, submissionsList, eligibleNodesCount)
-
-					// Remove the epochID and its day transition details from Redis
-					epochID := new(big.Int).Sub(currentEpoch, big.NewInt(int64(BufferEpochs)))
-					if err := redis.RemoveDayTransitionEpochFromRedis(ctx, dataMarketAddress, epochID.String()); err != nil {
-						log.Errorf("Error removing day transition epoch %s data from Redis for data market %s: %v", epochID.String(), dataMarketAddress, err)
-					}
-
-					log.Infof("🧹 Successfully removed day transition epoch %s data from Redis for data market %s", epochID.String(), dataMarketAddress)
-
-					// Send alert message about eligible nodes count update
-					alertMsg := fmt.Sprintf("🔔 Day Transition Update: Eligible nodes count for data market %s has been updated for day %s: %d", dataMarketAddress, lastKnownDay, eligibleNodesCount)
-					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, alertMsg, time.Now().String(), "High")
-					log.Info(alertMsg)
 				}
 			}
 			log.Infof("Completed processing for data market %s at epoch: %d", dataMarketAddress, currentEpoch.Uint64())
@@ -770,6 +786,20 @@ func sendFinalRewards(currentEpoch *big.Int) {
 
 	// Wait for all data market goroutines to finish
 	wg.Wait()
+	close(errChan)
+
+	// Collect any errors
+	var errs []error
+	for err := range errChan {
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple errors occurred during send rewards for epoch %s: %v", currentEpoch.String(), errs)
+	}
+	return nil
 }
 
 func batchArrays(ctx context.Context, dataMarketAddress, currentDay string, slotIDs, submissionsList []*big.Int, eligibleNodesCount int) {
