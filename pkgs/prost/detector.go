@@ -2,10 +2,7 @@ package prost
 
 import (
 	"context"
-	"fmt"
 	"math/big"
-	"runtime"
-	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/redis"
 	"sync"
 	"time"
@@ -28,87 +25,131 @@ const (
 
 var (
 	lastProcessedBlock int64
-	// Worker pool for block processing
-	blockWorkerPool chan struct{}
-	// Metrics for monitoring
-	activeGoroutines sync.WaitGroup
 	// Resource cleanup on shutdown
 	shutdownOnce sync.Once
-	// Rate limiter for block processing
-	blockProcessingLimiter = time.NewTicker(100 * time.Millisecond)
 )
-
-// Initialize worker pools and resources
-func init() {
-	// Set worker pool size based on CPU cores but with a reasonable maximum
-	maxWorkers := runtime.GOMAXPROCS(0) * 2
-	if maxWorkers > 16 {
-		maxWorkers = 16 // Cap maximum workers to prevent CPU spikes
-	}
-	blockWorkerPool = make(chan struct{}, maxWorkers)
-}
 
 // Cleanup resources
 func cleanup() {
 	shutdownOnce.Do(func() {
-		blockProcessingLimiter.Stop()
-		close(blockWorkerPool)
+		log.Info("Cleaning up resources")
 	})
 }
 
 // StartFetchingBlocks continuously fetches blocks and processes events
 func StartFetchingBlocks(ctx context.Context) {
-	// Parent context is used for shutdown signaling
 	defer cleanup()
 	log.Info("Submission Event Collector started")
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
+
+	// Create a parent error group for all block processing
+	mainGroup, groupCtx := errgroup.WithContext(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("Shutting down block fetching: context cancelled")
-			activeGoroutines.Wait()
+			mainGroup.Wait() // Wait for all processing to finish on shutdown
 			return
 		case <-ticker.C:
-			select {
-			case blockWorkerPool <- struct{}{}:
-				activeGoroutines.Add(1)
-				processBlock := func() {
-					defer func() {
-						<-blockWorkerPool
-						activeGoroutines.Done()
-					}()
+			// Get latest block number using HeaderByNumber(nil)
+			fetchCtx, fetchCancel := context.WithTimeout(groupCtx, blockFetchTimeout)
+			header, err := Client.HeaderByNumber(fetchCtx, nil)
+			fetchCancel()
 
-					// Create fetch context as child of parent context
-					fetchCtx, fetchCancel := context.WithTimeout(ctx, blockFetchTimeout)
-					defer fetchCancel()
-
-					latestBlock, err := fetchBlock(fetchCtx, nil)
-					if err != nil {
-						if err != context.Canceled && err != context.DeadlineExceeded {
-							log.Errorf("Error fetching latest block: %s", err)
-						}
-						return
-					}
-
-					// Process block with its own context
-					processCtx, processCancel := context.WithTimeout(ctx, blockProcessTimeout)
-					defer processCancel()
-
-					if err := processBlock(processCtx, latestBlock); err != nil {
-						if err != context.Canceled && err != context.DeadlineExceeded {
-							log.Errorf("Error processing block: %s", err)
-						}
-					}
+			if err != nil {
+				if err != context.Canceled && err != context.DeadlineExceeded {
+					log.Errorf("Error fetching latest block header: %s", err)
 				}
-
-				// Launch the block processing
-				go processBlock()
-			default:
-				log.Warn("Worker pool is full, skipping block processing")
+				continue
 			}
+
+			currentBlockNum := header.Number.Int64()
+			if currentBlockNum <= lastProcessedBlock {
+				continue // Skip if we've already processed this block
+			}
+
+			// Process all blocks from last processed to current
+			for blockNum := lastProcessedBlock + 1; blockNum <= currentBlockNum; blockNum++ {
+				currentNum := blockNum // Capture for closure
+
+				// Start a new goroutine for each block's processing
+				mainGroup.Go(func() error {
+					// Create block processing context as child of group context
+					blockCtx, blockCancel := context.WithTimeout(groupCtx, blockProcessTimeout)
+					defer blockCancel()
+
+					// Fetch the block
+					block, err := fetchBlock(blockCtx, big.NewInt(currentNum))
+					if err != nil {
+						log.Errorf("Failed to fetch block %d: %s", currentNum, err)
+						return nil // Don't fail the group for fetch errors
+					}
+
+					// Create error group for this block's concurrent operations
+					blockGroup, blockGroupCtx := errgroup.WithContext(blockCtx)
+
+					// Process events concurrently
+					blockGroup.Go(func() error {
+						if err := ProcessEvents(blockGroupCtx, block); err != nil {
+							if err != context.Canceled && err != context.DeadlineExceeded {
+								log.Errorf("Error processing events for block %d: %s", currentNum, err)
+							}
+							return err
+						}
+						return nil
+					})
+
+					// Prepare batch concurrently
+					blockGroup.Go(func() error {
+						if err := checkAndTriggerBatchPreparation(blockGroupCtx, block); err != nil {
+							if err != context.Canceled && err != context.DeadlineExceeded {
+								log.Errorf("Error preparing batch for block %d: %s", currentNum, err)
+							}
+							return err
+						}
+						return nil
+					})
+
+					// Store block hash in Redis concurrently
+					blockGroup.Go(func() error {
+						retryOp := func() error {
+							redisCtx, cancel := context.WithTimeout(blockGroupCtx, redisOperationTimeout)
+							defer cancel()
+							return redis.SetWithExpiration(redisCtx,
+								redis.BlockHashByNumber(currentNum),
+								block.Hash().Hex(),
+								30*time.Minute)
+						}
+
+						if err := backoff.Retry(retryOp, backoff.WithContext(backoff.NewExponentialBackOff(), blockGroupCtx)); err != nil {
+							log.Errorf("Failed to store block hash for block %d: %s", currentNum, err)
+							return err
+						}
+						return nil
+					})
+
+					// Wait for this block's operations to complete
+					if err := blockGroup.Wait(); err != nil {
+						log.Errorf("Error in block %d processing: %s", currentNum, err)
+						return err
+					}
+
+					// Update last processed block atomically
+					if currentNum > lastProcessedBlock {
+						lastProcessedBlock = currentNum
+					}
+
+					if currentNum < currentBlockNum {
+						log.Infof("Catching up: Processed block %d, %d more to go", currentNum, currentBlockNum-currentNum)
+					}
+
+					return nil
+				})
+			}
+			// Don't wait here - let blocks process independently
 		}
 	}
 }
@@ -132,94 +173,4 @@ func fetchBlock(ctx context.Context, blockNumber *big.Int) (*types.Block, error)
 		return nil, err
 	}
 	return block, nil
-}
-
-// processBlock processes a single block for batch preparation and event processing.
-func processBlock(ctx context.Context, block *types.Block) error {
-	if block == nil {
-		return fmt.Errorf("received nil block")
-	}
-
-	latestBlockNumber := block.Number().Int64()
-	if lastProcessedBlock == 0 {
-		lastProcessedBlock = latestBlockNumber
-	}
-
-	// Use a bounded buffer for block processing
-	const maxBlocksPerBatch = 100
-	blocksToProcess := latestBlockNumber - lastProcessedBlock
-	if blocksToProcess > maxBlocksPerBatch {
-		log.Warnf("Large block gap detected (%d blocks). Processing only last %d blocks to prevent memory spikes",
-			blocksToProcess, maxBlocksPerBatch)
-		lastProcessedBlock = latestBlockNumber - maxBlocksPerBatch
-	}
-
-	// Create error group with parent context
-	g, groupCtx := errgroup.WithContext(ctx)
-
-	// Process blocks in batches
-	for blockNum := lastProcessedBlock + 1; blockNum <= latestBlockNumber; blockNum++ {
-		blockNum := blockNum // Create new variable for goroutine
-
-		select {
-		case <-groupCtx.Done():
-			return groupCtx.Err()
-		default:
-			g.Go(func() error {
-				// Fetch and process individual block
-				block, err := fetchBlock(groupCtx, big.NewInt(blockNum))
-				if err != nil {
-					return fmt.Errorf("failed to fetch block %d: %w", blockNum, err)
-				}
-
-				if block == nil {
-					return fmt.Errorf("received nil block for number: %d", blockNum)
-				}
-
-				// Process events with timeout
-				if err := ProcessEvents(groupCtx, block); err != nil {
-					return fmt.Errorf("failed to process events for block %d: %w", blockNum, err)
-				}
-
-				// Prepare batch
-				if err := checkAndTriggerBatchPreparation(groupCtx, block); err != nil {
-					return fmt.Errorf("failed to prepare batch for block %d: %w", blockNum, err)
-				}
-
-				// Store block hash in Redis with retry
-				retryOp := func() error {
-					// Use a shorter timeout for Redis operations
-					redisCtx, cancel := context.WithTimeout(groupCtx, redisOperationTimeout)
-					defer cancel()
-
-					return redis.SetWithExpiration(redisCtx,
-						redis.BlockHashByNumber(blockNum),
-						block.Hash().Hex(),
-						30*time.Minute)
-				}
-
-				if err := backoff.Retry(retryOp, backoff.WithContext(backoff.NewExponentialBackOff(), groupCtx)); err != nil {
-					return fmt.Errorf("failed to store block hash %d in Redis: %w", blockNum, err)
-				}
-
-				// Update last processed block only if all operations succeeded
-				lastProcessedBlock = blockNum
-				return nil
-			})
-		}
-	}
-
-	// Wait for all block processing to complete
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("block processing failed: %w", err)
-	}
-
-	// Add delay to prevent excessive CPU usage while staying responsive
-	if latestBlockNumber-lastProcessedBlock > 10 {
-		time.Sleep(time.Duration(config.SettingsObj.BlockTime*100) * time.Millisecond)
-	} else {
-		time.Sleep(time.Duration(config.SettingsObj.BlockTime*500) * time.Millisecond)
-	}
-
-	return nil
 }

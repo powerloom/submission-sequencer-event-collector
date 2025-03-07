@@ -170,7 +170,7 @@ func handleEpochReleasedEvent(ctx context.Context, block *types.Block, vLog type
 		// Send updateRewards to relayer when current epoch is a multiple of epoch interval (config param)
 		if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
 			// Send periodic updateRewards to relayer throughout the day
-			if err := sendRewardUpdates(dataMarketAddress, newEpochID.String()); err != nil {
+			if err := sendRewardUpdates(ctx, dataMarketAddress, newEpochID.String()); err != nil {
 				errMsg := fmt.Sprintf("Failed to send reward updates for epoch %s within data market %s: %v", newEpochID.String(), dataMarketAddress, err)
 				clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errMsg, time.Now().String(), "High")
 				log.Error(errMsg)
