@@ -109,9 +109,7 @@ func checkAndTriggerBatchPreparation(ctx context.Context, block *types.Block) er
 			select {
 			case <-gctx.Done():
 				return gctx.Err()
-			case workerPool <- struct{}{}: // Acquire worker with context awareness
-				defer func() { <-workerPool }() // Release worker
-
+			default:
 				log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
 				if err := processMarketData(gctx, dataMarketAddress, currentBlockNum); err != nil {
 					if err != context.Canceled && err != context.DeadlineExceeded {

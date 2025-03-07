@@ -2,11 +2,7 @@ package prost
 
 import (
 	"math/big"
-	"runtime"
 )
-
-// Shared worker pool for batch processing
-var workerPool = make(chan struct{}, runtime.GOMAXPROCS(0))
 
 // EpochMarkerDetails contains information about epoch release and submission limit blocks
 type EpochMarkerDetails struct {

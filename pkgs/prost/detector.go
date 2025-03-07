@@ -15,12 +15,7 @@ import (
 
 // Context timeout constants
 const (
-	// Operation-specific timeouts
-	blockFetchTimeout     = 5 * time.Second
-	blockProcessTimeout   = 30 * time.Second
-	eventProcessTimeout   = 30 * time.Second
-	batchPrepareTimeout   = 60 * time.Second
-	redisOperationTimeout = 5 * time.Second
+	
 )
 
 var (
