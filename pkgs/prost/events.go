@@ -9,6 +9,7 @@ import (
 	"submission-sequencer-collector/pkgs"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/redis"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -16,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
 )
 
 // ProcessEvents processes all events from a given block with proper context management
@@ -55,38 +55,28 @@ func ProcessEvents(ctx context.Context, block *types.Block) error {
 
 	log.Infof("Processing %d logs for block number %d", len(logs), block.Number().Int64())
 
-	// Create error group for coordinated error handling of log processing
-	g, gctx := errgroup.WithContext(ctx)
-
-	// Process the logs for the current block
+	var wg sync.WaitGroup
 	for _, vLog := range logs {
-		vLog := vLog // Create new variable for goroutine
-		g.Go(func() error {
-			select {
-			case <-gctx.Done():
-				return gctx.Err()
-			default:
-				// Check the event signature and handle the events
-				switch vLog.Topics[0].Hex() {
-				case ContractABI.Events["EpochReleased"].ID.Hex():
-					return handleEpochReleasedEvent(gctx, block, vLog)
-				case ContractABI.Events["SnapshotBatchSubmitted"].ID.Hex():
-					return handleSnapshotBatchSubmittedEvent(gctx, block, vLog)
+		vLog := vLog
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// Check the event signature and handle the events
+			switch vLog.Topics[0].Hex() {
+			case ContractABI.Events["EpochReleased"].ID.Hex():
+				if err := handleEpochReleasedEvent(ctx, block, vLog); err != nil {
+					log.Errorf("Failed to handle epoch released event: %v", err)
 				}
-				return nil
+			case ContractABI.Events["SnapshotBatchSubmitted"].ID.Hex():
+				if err := handleSnapshotBatchSubmittedEvent(ctx, block, vLog); err != nil {
+					log.Errorf("Failed to handle snapshot batch event: %v", err)
+				}
 			}
-		})
+		}()
 	}
 
-	// Wait for all log processing to complete
-	if err := g.Wait(); err != nil {
-		if err != context.Canceled && err != context.DeadlineExceeded {
-			log.Errorf("Error processing logs: %v", err)
-			return fmt.Errorf("error processing logs: %w", err)
-		}
-		return err
-	}
-
+	wg.Wait()
 	return nil
 }
 
@@ -99,39 +89,21 @@ func checkAndTriggerBatchPreparation(ctx context.Context, block *types.Block) er
 	currentBlockNum := block.Number().Int64()
 	log.Infof("🔍 Starting batch preparation check for block number: %d", currentBlockNum)
 
-	// Create error group for coordinated error handling
-	g, gctx := errgroup.WithContext(ctx)
-
-	// Process each data market address concurrently
+	var wg sync.WaitGroup
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		dataMarketAddress := dataMarketAddress // Create new variable for goroutine
-		g.Go(func() error {
-			select {
-			case <-gctx.Done():
-				return gctx.Err()
-			default:
-				log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
-				if err := processMarketData(gctx, dataMarketAddress, currentBlockNum); err != nil {
-					if err != context.Canceled && err != context.DeadlineExceeded {
-						log.Errorf("Failed to process market data for %s: %v", dataMarketAddress, err)
-						return fmt.Errorf("failed to process market data: %w", err)
-					}
-					return err
-				}
-				return nil
+		dataMarketAddress := dataMarketAddress
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
+			if err := processMarketData(ctx, dataMarketAddress, currentBlockNum); err != nil {
+				log.Errorf("Failed to process market data for %s: %v", dataMarketAddress, err)
 			}
-		})
+		}()
 	}
 
-	// Wait for all processing to complete
-	if err := g.Wait(); err != nil {
-		if err != context.Canceled && err != context.DeadlineExceeded {
-			log.Errorf("Error in batch preparation: %v", err)
-			return fmt.Errorf("error in batch preparation: %w", err)
-		}
-		return err
-	}
-
+	wg.Wait()
 	return nil
 }
 
