@@ -32,7 +32,7 @@ func main() {
 	// Setup redis
 	redis.RedisClient = redis.NewRedisClient()
 
-	// Create root context before any client configuration
+	// Create root context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -50,10 +50,6 @@ func main() {
 	if err := prost.LoadContractStateVariables(ctx); err != nil {
 		log.Fatal(err)
 	}
-
-	// Create a root context that can be cancelled
-	ctx, cancel = context.WithCancel(ctx)
-	defer cancel()
 
 	var wg sync.WaitGroup
 	if !config.SettingsObj.AttestorQueuePushEnabled {
@@ -74,7 +70,7 @@ func main() {
 			wg.Add(1)
 			go func(addr string) {
 				defer wg.Done()
-				if err := prost.CleanupSubmissionDumpForAllSlots(addr); err != nil {
+				if err := prost.CleanupSubmissionDumpForAllSlots(ctx, addr); err != nil {
 					log.Printf("Cleanup failed for all slots: %v", err)
 				}
 			}(dataMarketAddress)
@@ -86,6 +82,13 @@ func main() {
 
 	wg.Add(1)
 	go prost.StartFetchingBlocks(ctx) // Pass the context
+
+	// Start periodic cleanup routine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		prost.StartPeriodicCleanupRoutine(ctx)
+	}()
 
 	// Add signal handling for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
