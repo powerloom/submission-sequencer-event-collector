@@ -45,45 +45,121 @@ const (
 
 ## 3. Core Processing Flows
 
-### 3.1 Block Processing and Event Detection
+```
+StartFetchingBlocks(ctx)
+├── cleanup() [deferred]
+├── → Client.HeaderByNumber(initFetchCtx) [initial block]
+└── For each tick:
+    ├── → Client.HeaderByNumber(fetchCtx) [latest block]
+    └── For each block:
+        ├── → fetchBlock(blockCtx)
+        │   └── → Client.BlockByNumber with retry
+        │
+        ├── errChan := make(chan error, 3)
+        ├── var wg sync.WaitGroup
+        │
+        ├── ⟿ ProcessEvents(eventProcessCtx)
+        │   ├── → Client.FilterLogs with retry
+        │   ├── errChan := make(chan error, len(logs))
+        │   ├── var wg sync.WaitGroup
+        │   └── For each log:
+        │       ⟿ (event handler goroutine)
+        │          ├── → handleEpochReleasedEvent
+        │          │   ├── → Instance.ParseEpochReleased
+        │          │   ├── → calculateSubmissionLimitBlock
+        │          │   ├── → sendRewardUpdates (if interval)
+        │          │   │   └── → SendUpdateRewardsToRelayer
+        │          │   └── → redis.StoreEpochDetails
+        │          │
+        │          └── → handleSnapshotBatchSubmittedEvent
+        │              ├── → Instance.ParseSnapshotBatchSubmitted
+        │              └── → redis.LPush (if enabled)
+        │   └── collect errors from errChan
+        │
+        ├── ⟿ processEpochDeadlinesForDataMarkets(marketEpochDeadlineProcessCtx)
+        │   ├── errChan := make(chan error, len(dataMarketAddresses))
+        │   ├── var wg sync.WaitGroup
+        │   └── For each market:
+        │       ⟿ checkAndTriggerBatchPreparation(marketCtx)
+        │          ├── → redis.SMembers (epoch markers)
+        │          ├── errChan := make(chan error, len(epochMarkerKeys))
+        │          ├── var wg sync.WaitGroup
+        │          └── For each marker:
+        │              ├── → redis.Get (marker details)
+        │              └── → triggerBatchPreparation
+        │                  ├── → redis.Get (block hashes) for each block
+        │                  ├── → getValidSubmissionKeys
+        │                  ├── → UpdateSlotSubmissionCount
+        │                  │   ├── → FetchCurrentDay
+        │                  │   ├── ⟿ sendFinalRewards
+        │                  │   │   └── errChan := make(chan error, 1)
+        │                  │   ├── → handleDayTransition
+        │                  │   └── → redis operations
+        │                  ├── → constructProjectMap
+        │                  ├── → arrangeSubmissionKeysInBatches
+        │                  ├── → redis.SetWithExpiration (batch count)
+        │                  ├── → SendBatchSizeToRelayer
+        │                  ├── var wg sync.WaitGroup
+        │                  └── For each batch:
+        │                      ⟿ Process Batch
+        │                         ├── → json.Marshal
+        │                         ├── → redis.LPush
+        │                         └── → redis.StoreBatchDetails
+        │                  └── collect errors from errChan
+        │          └── collect errors from errChan
+        │   └── collect errors from errChan
+        │
+        ├── ⟿ redis.SetWithExpiration(redisCtx)
+        │
+        └── collect errors from errChan
+```
 
+### 3.1. Timeout hierarchies
 
 ```
-StartFetchingBlocks (continuous)
-├── Fetch latest block every 500ms
-├── Process new blocks concurrently
-│ ├── Event Processing Path (parallel)
-│ └── Batch Preparation Path (parallel)
-└── Update last processed block
-```
-
-### 3.2 Event Processing Path
-
-```
-ProcessEvents (30s timeout)
-├── For each event log:
-│ ├── EpochReleased Event
-│ │ ├── Calculate submission limit block
-│ │ ├── Update rewards (on interval)
-│ │ └── Store epoch details (Redis, 5s)
-│ └── SnapshotBatchSubmitted Event
-│ └── Queue for attestation (Redis, 5s)
-└── Log completion/errors
-```
-
-### 3.3 Batch Preparation Path
-
-```
-processMarketData (120s timeout)
-├── For each market:
-│ └── processSingleEpoch (90s timeout)
-│ └── triggerBatchPreparation
-│ ├── Collect block headers
-│ ├── Get valid submission keys
-│ ├── Update submission counts
-│ ├── Create project batches
-│ └── Process batches (30s each)
-└── Update state in Redis (5s)
+StartFetchingBlocks(unlimited ctx)
+├── cleanup() [deferred]
+├── → Client.HeaderByNumber(initFetchCtx - 5s) [initial block]
+└── For each tick:
+    ├── → Client.HeaderByNumber(fetchCtx - 5s) [latest block]
+    └── For each block:
+        ├── → fetchBlock(blockCtx - 30s)
+        │   └── → Client.BlockByNumber with retry
+        │
+        ├── errChan := make(chan error, 3)
+        ├── var wg sync.WaitGroup
+        │
+        ├── ⟿ ProcessEvents(eventProcessCtx - 30s)
+        │   ├── → Client.FilterLogs with retry
+        │   ├── errChan := make(chan error, len(logs))
+        │   ├── var wg sync.WaitGroup
+        │   └── For each log:
+        │       ⟿ (event handler goroutine)
+        │          ├── eventCtx - 30s
+        │          │   ├── handleEpochReleasedEvent
+        │          │   │   ├── redis operations (redisCtx - 5s)
+        │          │   │   └── SendUpdateRewardsToRelayer
+        │          │   │
+        │          │   └── handleSnapshotBatchSubmittedEvent
+        │          │       └── redis operations (redisCtx - 5s)
+        │
+        ├── ⟿ processEpochDeadlinesForDataMarkets(marketEpochDeadlineProcessCtx - 120s)
+        │   ├── errChan := make(chan error, len(dataMarketAddresses))
+        │   └── For each market:
+        │       ⟿ checkAndTriggerBatchPreparation(marketCtx - 90s)
+        │          ├── redis operations (redisCtx - 5s)
+        │          └── For each marker:
+        │              ├── redis operations (redisCtx - 5s)
+        │              └── triggerBatchPreparation
+        │                  ├── redis operations (redisCtx - 5s)
+        │                  ├── getValidSubmissionKeys (submissionCtx - 30s)
+        │                  ├── UpdateSlotSubmissionCount
+        │                  │   └── redis operations (redisCtx - 5s)
+        │                  └── For each batch:
+        │                      ⟿ Process Batch
+        │                         └── redis operations (redisCtx - 5s)
+        │
+        └── ⟿ redis.SetWithExpiration(redisCtx - 5s)
 ```
 
 ## 4. Resource Management

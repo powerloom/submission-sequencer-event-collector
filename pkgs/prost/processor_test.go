@@ -73,7 +73,7 @@ func TestCheckAndTriggerBatchPreparation(t *testing.T) {
 	currentBlock := types.NewBlock(&types.Header{Number: big.NewInt(10)}, nil, nil, nil)
 
 	// Call the function under test
-	checkAndTriggerBatchPreparation(context.Background(), currentBlock)
+	processEpochDeadlinesForDataMarkets(context.Background(), currentBlock)
 
 	// Ensure the epoch key is removed from the Redis set
 	members, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()

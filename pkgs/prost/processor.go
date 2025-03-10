@@ -24,36 +24,34 @@ import (
 
 // Timeout Hierarchy:
 //
-// marketProcessingTimeout (120s)
-// ├── Block Processing
-// │   ├── blockProcessTimeout (30s)
-// │   │   ├── ProcessEvents
-// │   │   ├── checkAndTriggerBatchPreparation
-// │   │   └── Redis block hash storage (5s)
-// │   │
-// │   └── batchPreparationTimeout (90s)
-// │       ├── Collect block headers
-// │       ├── Get submission keys
-// │       ├── Update submission counts
-// │       ├── Create project map & batches
-// │       └── Process individual batches
+// Block Processing Loop (continuous)
+// ├── blockFetchTimeout (5s)
+// │   └── HeaderByNumber
 // │
-// └── Base Operations
-//     ├── redisOperationTimeout (5s)
-//     ├── eventProcessingTimeout (30s)
-//     └── batchProcessingTimeout (30s)
-//
-// Note: All timeouts are maximums. Operations may complete faster.
-// Redis operations and block fetches use shorter timeouts to allow
-// for retries within their parent context.
+// ├── blockProcessTimeout (30s)
+// │   ├── fetchBlock
+// │   │   └── BlockByNumber with retries
+// │   │
+// │   ├── ProcessEvents (30s)
+// │   │   ├── FilterLogs with retries
+// │   │   ├── handleEpochReleasedEvent
+// │   │   └── handleSnapshotBatchSubmittedEvent
+// │   │
+// │   ├── processEpochDeadlinesForDataMarkets (120s)
+// │   │   └── For each data market:
+// │   │       └── checkAndTriggerBatchPreparation (90s)
+// │   │           └── triggerBatchPreparation
+// │   │
+// │   └── Redis block hash storage (5s)
 
 // Timeout durations for various operations
 const (
 
 	// Individual operation timeouts
-	blockProcessTimeout    = 30 * time.Second // For processing a single block
-	eventProcessingTimeout = 30 * time.Second // For processing individual events
-	batchProcessingTimeout = 90 * time.Second // For processing individual batches
+	marketProcessingTimeout = 120 * time.Second // For processing a datamarket
+	blockProcessTimeout     = 30 * time.Second  // For processing a single block
+	eventProcessingTimeout  = 30 * time.Second  // For processing individual events
+	batchProcessingTimeout  = 90 * time.Second  // For processing batch creation and submission against an epoch
 
 	// Base operation timeout
 	redisOperationTimeout = 5 * time.Second // For all Redis operations
@@ -69,7 +67,7 @@ const (
 // - RelayerRequestBody
 
 // Entry point for market processing
-func processMarketData(ctx context.Context, dataMarketAddress string, currentBlockNum int64) (err error) {
+func checkAndTriggerBatchPreparation(ctx context.Context, dataMarketAddress string, currentBlockNum int64) (err error) {
 	// Panic recovery
 	defer func() {
 		if r := recover(); r != nil {
@@ -96,19 +94,34 @@ func processMarketData(ctx context.Context, dataMarketAddress string, currentBlo
 	log.Infof("Fetched %d epoch marker keys for data market %s", len(epochMarkerKeys), dataMarketAddress)
 
 	var wg sync.WaitGroup
+	errChan := make(chan error, len(epochMarkerKeys))
+
 	for _, epochMarkerKey := range epochMarkerKeys {
-		epochMarkerKey := epochMarkerKey // capture for goroutine
+		epochMarkerKey := epochMarkerKey
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := processSingleEpoch(ctx, dataMarketAddress, epochMarkerKey, currentBlockNum); err != nil {
-				log.Errorf("Failed to process epoch %s for market %s: %v",
-					epochMarkerKey, dataMarketAddress, err)
+				select {
+				case errChan <- fmt.Errorf("epoch %s: %w", epochMarkerKey, err):
+				default:
+					log.Errorf("Error channel full: %v", err)
+				}
 			}
 		}()
 	}
 
 	wg.Wait()
+	close(errChan)
+
+	// Collect errors
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple errors: %v", errs)
+	}
 	return nil
 }
 
@@ -462,9 +475,17 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 	}
 
 	// Verify and trigger updateRewards to relayer when the current epoch matches the buffer epoch for any data market
+	var wg sync.WaitGroup
+	errChan := make(chan error, 1)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := sendFinalRewards(ctx, epochID); err != nil {
-			log.Errorf("Error sending final rewards for epoch %s: %v", epochID, err)
+			select {
+			case errChan <- err:
+			default:
+				log.Errorf("Error sending final rewards for epoch %s: %v", epochID, err)
+			}
 		}
 	}()
 
@@ -642,23 +663,23 @@ func sendFinalRewards(ctx context.Context, currentEpoch *big.Int) error {
 					return
 				default:
 					// Retrieve the day transition epoch marker details from Redis
-					epochMarkerDetailsJSON, err := redis.RedisClient.Get(timeoutCtx, redis.DayRolloverEpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
+					dayTransitionMarkerDetailsJSON, err := redis.RedisClient.Get(timeoutCtx, redis.DayRolloverEpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
 					if err != nil {
 						log.Errorf("Failed to fetch day transition epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
 						continue
 					}
 
-					var epochMarkerDetails DayTransitionEpochInfo
-					if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
+					var dayTransitionMarkerInfo DayTransitionEpochInfo
+					if err := json.Unmarshal([]byte(dayTransitionMarkerDetailsJSON), &dayTransitionMarkerInfo); err != nil {
 						log.Errorf("Failed to unmarshal day transition epoch marker details for key %s: %s", epochMarkerKey, err)
 						continue
 					}
 
-					log.Debugf("📊 Day transition epoch marker details for key %s: %+v", epochMarkerKey, epochMarkerDetails)
+					log.Debugf("📊 Day transition epoch marker details for key %s: %+v", epochMarkerKey, dayTransitionMarkerInfo)
 
 					// Check if the current epoch matches the buffer epoch
-					if currentEpoch.Int64() == epochMarkerDetails.BufferEpoch {
-						lastKnownDay := epochMarkerDetails.LastKnownDay
+					if currentEpoch.Int64() == dayTransitionMarkerInfo.BufferEpoch {
+						lastKnownDay := dayTransitionMarkerInfo.LastKnownDay
 
 						// Fetch the eligible nodes count and slotIDs for the last known day (prev day)
 						eligibleNodesCount, eligibleSlotIDs := fetchEligibleSlotIDs(timeoutCtx, dataMarketAddress, lastKnownDay)

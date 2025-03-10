@@ -2,6 +2,7 @@ package prost
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"submission-sequencer-collector/pkgs/redis"
 	"sync"
@@ -74,14 +75,16 @@ func StartFetchingBlocks(ctx context.Context) {
 
 				// Create block processing context
 				blockCtx, blockCancel := context.WithTimeout(ctx, blockProcessTimeout)
-
+				defer blockCancel()
 				// Fetch the block
 				block, err := fetchBlock(blockCtx, big.NewInt(currentNum))
 				if err != nil {
-					log.Errorf("Failed to fetch block %d: %s", currentNum, err)
-					blockCancel()
+					log.Errorf("failed to fetch block %d: %s", currentNum, err)
 					continue
 				}
+
+				// error collection channel
+				errChan := make(chan error, 3)
 
 				// Process events and prepare batch concurrently
 				var wg sync.WaitGroup
@@ -93,18 +96,27 @@ func StartFetchingBlocks(ctx context.Context) {
 					defer wg.Done()
 					defer eventProcessCancel()
 					if err := ProcessEvents(eventProcessCtx, block); err != nil {
-						log.Errorf("Failed to process events for block %d: %v", currentNum, err)
+						select {
+						case errChan <- fmt.Errorf("failed to process events for block %d: %v", currentNum, err):
+						default:
+							log.Errorf("failed to process events for block %d: %v", currentNum, err)
+						}
 					}
 				}()
 
-				// Check and trigger batch preparation
+				// Check epoch deadlines for all configured data markets
 				wg.Add(1)
-				batchProcessCtx, batchProcessCancel := context.WithTimeout(ctx, batchProcessingTimeout)
+				// use marketProcessingTimeout for batch preparation across all datamarkets
+				marketEpochDeadlineProcessCtx, marketEpochDeadlineProcessCancel := context.WithTimeout(ctx, marketProcessingTimeout)
 				go func() {
 					defer wg.Done()
-					defer batchProcessCancel()
-					if err := checkAndTriggerBatchPreparation(batchProcessCtx, block); err != nil {
-						log.Errorf("Failed to trigger batch preparation for block %d: %v", currentNum, err)
+					defer marketEpochDeadlineProcessCancel()
+					if err := processEpochDeadlinesForDataMarkets(marketEpochDeadlineProcessCtx, block); err != nil {
+						select {
+						case errChan <- fmt.Errorf("failed to trigger batch preparation for block %d: %v", currentNum, err):
+						default:
+							log.Errorf("failed to trigger batch preparation for block %d: %v", currentNum, err)
+						}
 					}
 				}()
 
@@ -118,13 +130,19 @@ func StartFetchingBlocks(ctx context.Context) {
 						redis.BlockHashByNumber(currentNum),
 						block.Hash().Hex(),
 						30*time.Minute); err != nil {
-						log.Errorf("Failed to store block hash for block %d: %v", currentNum, err)
+						select {
+						case errChan <- fmt.Errorf("failed to store block hash for block %d: %v", currentNum, err):
+						default:
+							log.Errorf("failed to store block hash for block %d: %v", currentNum, err)
+						}
 					}
 				}()
 
 				// Wait for all operations to complete
-				wg.Wait()
-				blockCancel()
+				go func() {
+					wg.Wait()
+					close(errChan)
+				}()
 
 				// Update last processed block
 				if currentNum > lastProcessedBlock {
