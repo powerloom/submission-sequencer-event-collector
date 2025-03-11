@@ -64,14 +64,10 @@ func ProcessEvents(ctx context.Context, block *types.Block) error {
 		go func() {
 			defer wg.Done()
 
-			// Create timeout context for event processing
-			eventCtx, cancel := context.WithTimeout(ctx, eventProcessingTimeout)
-			defer cancel()
-
 			// Check the event signature and handle the events
 			switch vLog.Topics[0].Hex() {
 			case ContractABI.Events["EpochReleased"].ID.Hex():
-				if err := handleEpochReleasedEvent(eventCtx, block, vLog); err != nil {
+				if err := handleEpochReleasedEvent(ctx, block, vLog); err != nil {
 					select {
 					case errChan <- fmt.Errorf("epoch released event: %w", err):
 					default:
@@ -79,7 +75,7 @@ func ProcessEvents(ctx context.Context, block *types.Block) error {
 					}
 				}
 			case ContractABI.Events["SnapshotBatchSubmitted"].ID.Hex():
-				if err := handleSnapshotBatchSubmittedEvent(eventCtx, block, vLog); err != nil {
+				if err := handleSnapshotBatchSubmittedEvent(ctx, block, vLog); err != nil {
 					select {
 					case errChan <- fmt.Errorf("snapshot batch event: %w", err):
 					default:
