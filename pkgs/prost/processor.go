@@ -45,17 +45,16 @@ import (
 // │   └── Redis block hash storage (5s)
 
 // Timeout durations for various operations
-const (
+var (
 
 	// Individual operation timeouts
-	marketProcessingTimeout = 120 * time.Second // For processing a datamarket
-	blockProcessTimeout     = 30 * time.Second  // For processing a single block
-	eventProcessingTimeout  = 30 * time.Second  // For processing individual events
-	batchProcessingTimeout  = 90 * time.Second  // For processing batch creation and submission against an epoch
+	marketProcessingTimeout = time.Duration(config.SettingsObj.MarketProcessingTimeout) * time.Second // For processing a datamarket
+	eventProcessingTimeout  = time.Duration(config.SettingsObj.EventProcessingTimeout) * time.Second  // For processing individual events
+	batchProcessingTimeout  = time.Duration(config.SettingsObj.BatchProcessingTimeout) * time.Second  // For processing batch creation and submission against an epoch
 
 	// Base operation timeout
-	redisOperationTimeout = 5 * time.Second // For all Redis operations
-	blockFetchTimeout     = 5 * time.Second // For fetching a single block
+	redisOperationTimeout = time.Duration(config.SettingsObj.RedisOperationTimeout) * time.Second // For all Redis operations
+	blockFetchTimeout     = time.Duration(config.SettingsObj.BlockFetchTimeout) * time.Second     // For fetching a single block
 )
 
 // Note: All type definitions have been moved to types.go in the same package (prost).

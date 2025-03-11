@@ -74,7 +74,7 @@ func StartFetchingBlocks(ctx context.Context) {
 				currentNum := blockNum // Capture for closure
 
 				// Create block processing context
-				blockCtx, blockCancel := context.WithTimeout(ctx, blockProcessTimeout)
+				blockCtx, blockCancel := context.WithTimeout(ctx, blockFetchTimeout)
 				defer blockCancel()
 				// Fetch the block
 				block, err := fetchBlock(blockCtx, big.NewInt(currentNum))
