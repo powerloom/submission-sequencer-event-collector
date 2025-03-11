@@ -46,15 +46,12 @@ import (
 
 // Timeout durations for various operations
 var (
-
-	// Individual operation timeouts
-	marketProcessingTimeout = time.Duration(config.SettingsObj.MarketProcessingTimeout) * time.Second // For processing a datamarket
-	eventProcessingTimeout  = time.Duration(config.SettingsObj.EventProcessingTimeout) * time.Second  // For processing individual events
-	batchProcessingTimeout  = time.Duration(config.SettingsObj.BatchProcessingTimeout) * time.Second  // For processing batch creation and submission against an epoch
-
-	// Base operation timeout
-	redisOperationTimeout = time.Duration(config.SettingsObj.RedisOperationTimeout) * time.Second // For all Redis operations
-	blockFetchTimeout     = time.Duration(config.SettingsObj.BlockFetchTimeout) * time.Second     // For fetching a single block
+	redisOperationTimeout   time.Duration
+	blockFetchTimeout       time.Duration
+	blockProcessTimeout     time.Duration
+	eventProcessingTimeout  time.Duration
+	batchProcessingTimeout  time.Duration
+	marketProcessingTimeout time.Duration
 )
 
 // Note: All type definitions have been moved to types.go in the same package (prost).
@@ -790,4 +787,12 @@ func batchArrays(ctx context.Context, dataMarketAddress, currentDay string, slot
 	}
 
 	log.Infof("✅ Successfully sent %d batches to relayer for data market %s on day %s", len(slotIDs)/batchSize, dataMarketAddress, currentDay)
+}
+
+func InitializeTimeouts() {
+	redisOperationTimeout = time.Second * time.Duration(config.SettingsObj.RedisOperationTimeout)
+	blockFetchTimeout = time.Second * time.Duration(config.SettingsObj.BlockFetchTimeout)
+	eventProcessingTimeout = time.Second * time.Duration(config.SettingsObj.EventProcessingTimeout)
+	batchProcessingTimeout = time.Second * time.Duration(config.SettingsObj.BatchProcessingTimeout)
+	marketProcessingTimeout = time.Second * time.Duration(config.SettingsObj.MarketProcessingTimeout)
 }
