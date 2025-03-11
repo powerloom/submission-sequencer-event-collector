@@ -43,9 +43,6 @@ func ConfigureClient(ctx context.Context) error {
 }
 
 func ConfigureContractInstance(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
 	var err error
 	Instance, err = contract.NewContract(common.HexToAddress(config.SettingsObj.ContractAddress), Client)
 	if err != nil {

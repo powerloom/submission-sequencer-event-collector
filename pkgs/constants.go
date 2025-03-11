@@ -5,6 +5,7 @@ package pkgs
 const (
 	StartFetchingBlocks             = "SequencerEventCollector: StartFetchingBlocks"
 	ProcessEvents                   = "SequencerEventCollector: ProcessEvents"
+	ProcessMarketData               = "SequencerEventCollector: ProcessMarketData"
 	ConstructProjectMap             = "SequencerEventCollector: ConstructProjectMap"
 	SendSubmissionBatchSize         = "SequencerEventCollector: SendSubmissionBatchSize"
 	UpdateSlotSubmissionCount       = "SequencerEventCollector: UpdateSlotSubmissionCount"
@@ -17,6 +18,7 @@ const (
 
 // General Key Constants
 const (
+	CurrentEpoch                     = "CurrentEpochID"
 	CurrentDayKey                    = "CurrentDayKey"
 	TotalNodesCount                  = "TotalNodesCount"
 	DaySizeTableKey                  = "DaySizeTableKey"

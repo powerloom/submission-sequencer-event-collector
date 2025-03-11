@@ -39,8 +39,8 @@ func NewRedisClient() *redis.Client {
 		Port:         config.SettingsObj.RedisPort,
 		DB:           db,
 		PoolSize:     1000,
-		ReadTimeout:  200 * time.Millisecond,
-		WriteTimeout: 200 * time.Millisecond,
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 2 * time.Second,
 		DialTimeout:  5 * time.Second,
 		IdleTimeout:  5 * time.Minute,
 	}

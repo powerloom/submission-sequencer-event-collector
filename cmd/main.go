@@ -23,6 +23,9 @@ func main() {
 	// Load the config object
 	config.LoadConfig()
 
+	// Initialize timeouts
+	prost.InitializeTimeouts()
+
 	// Initialize reporting service
 	clients.InitializeReportingClient(config.SettingsObj.SlackReportingUrl, 5*time.Second)
 
@@ -32,7 +35,7 @@ func main() {
 	// Setup redis
 	redis.RedisClient = redis.NewRedisClient()
 
-	// Create root context before any client configuration
+	// Create root context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -51,14 +54,44 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Create a root context that can be cancelled
-	ctx, cancel = context.WithCancel(ctx)
-	defer cancel()
-
 	var wg sync.WaitGroup
+	if !config.SettingsObj.AttestorQueuePushEnabled {
+		redis.Delete(ctx, "attestorQueue")
+	}
+	if config.SettingsObj.InitCleanupEnabled {
+		// Run initial cleanup for all data markets
+		for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+			wg.Add(1)
+			go func(addr string) {
+				defer wg.Done()
+				if err := prost.CleanupSubmissionSet(ctx, addr); err != nil {
+					log.Printf("Initial cleanup failed for %s: %v", addr, err)
+				}
+			}(dataMarketAddress)
+		}
+		for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+			wg.Add(1)
+			go func(addr string) {
+				defer wg.Done()
+				if err := prost.CleanupSubmissionDumpForAllSlots(ctx, addr); err != nil {
+					log.Printf("Cleanup failed for all slots: %v", err)
+				}
+			}(dataMarketAddress)
+		}
+	}
+
 	wg.Add(1)
-	go service.StartApiServer()       // Start API Server
+	go service.StartApiServer() // Start API Server
+
+	wg.Add(1)
 	go prost.StartFetchingBlocks(ctx) // Pass the context
+
+	// Start periodic cleanup routine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		prost.StartPeriodicCleanupRoutine(ctx)
+	}()
 
 	// Add signal handling for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
