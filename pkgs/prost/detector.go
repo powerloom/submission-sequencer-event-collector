@@ -2,6 +2,7 @@ package prost
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"submission-sequencer-collector/pkgs/redis"
 	"sync"
@@ -10,7 +11,6 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
 )
 
 // Context timeout constants
@@ -37,18 +37,23 @@ func StartFetchingBlocks(ctx context.Context) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	// Create a parent error group for all block processing
-	mainGroup, groupCtx := errgroup.WithContext(ctx)
+	initFetchCtx, initFetchCancel := context.WithTimeout(ctx, blockFetchTimeout)
+	defer initFetchCancel()
+	header, err := Client.HeaderByNumber(initFetchCtx, nil)
+	if err != nil {
+		log.Errorf("Error fetching latest block header: %s", err)
+		return
+	}
+	lastProcessedBlock = header.Number.Int64() - 1
 
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("Shutting down block fetching: context cancelled")
-			mainGroup.Wait() // Wait for all processing to finish on shutdown
 			return
 		case <-ticker.C:
 			// Get latest block number using HeaderByNumber(nil)
-			fetchCtx, fetchCancel := context.WithTimeout(groupCtx, blockFetchTimeout)
+			fetchCtx, fetchCancel := context.WithTimeout(ctx, blockFetchTimeout)
 			header, err := Client.HeaderByNumber(fetchCtx, nil)
 			fetchCancel()
 
@@ -60,7 +65,6 @@ func StartFetchingBlocks(ctx context.Context) {
 			}
 
 			currentBlockNum := header.Number.Int64()
-			lastProcessedBlock = currentBlockNum - 1
 			if currentBlockNum <= lastProcessedBlock {
 				continue // Skip if we've already processed this block
 			}
@@ -69,81 +73,86 @@ func StartFetchingBlocks(ctx context.Context) {
 			for blockNum := lastProcessedBlock + 1; blockNum <= currentBlockNum; blockNum++ {
 				currentNum := blockNum // Capture for closure
 
-				// Start a new goroutine for each block's processing
-				mainGroup.Go(func() error {
-					// Create block processing context as child of group context
-					blockCtx, blockCancel := context.WithTimeout(groupCtx, blockProcessTimeout)
-					defer blockCancel()
+				// Create block processing context
+				blockCtx, blockCancel := context.WithTimeout(ctx, blockFetchTimeout)
+				defer blockCancel()
+				// Fetch the block
+				block, err := fetchBlock(blockCtx, big.NewInt(currentNum))
+				if err != nil {
+					log.Errorf("failed to fetch block %d: %s", currentNum, err)
+					continue
+				}
 
-					// Fetch the block
-					block, err := fetchBlock(blockCtx, big.NewInt(currentNum))
-					if err != nil {
-						log.Errorf("Failed to fetch block %d: %s", currentNum, err)
-						return nil // Don't fail the group for fetch errors
-					}
+				// error collection channel
+				errChan := make(chan error, 3)
 
-					// Create error group for this block's concurrent operations
-					blockGroup, blockGroupCtx := errgroup.WithContext(blockCtx)
+				// Process events and prepare batch concurrently
+				var wg sync.WaitGroup
 
-					// Process events concurrently
-					blockGroup.Go(func() error {
-						if err := ProcessEvents(blockGroupCtx, block); err != nil {
-							if err != context.Canceled && err != context.DeadlineExceeded {
-								log.Errorf("Error processing events for block %d: %s", currentNum, err)
-							}
-							return err
+				// Process Events
+				wg.Add(1)
+				eventProcessCtx, eventProcessCancel := context.WithTimeout(ctx, eventProcessingTimeout)
+				go func() {
+					defer wg.Done()
+					defer eventProcessCancel()
+					if err := ProcessEvents(eventProcessCtx, block); err != nil {
+						select {
+						case errChan <- fmt.Errorf("failed to process events for block %d: %v", currentNum, err):
+						default:
+							log.Errorf("failed to process events for block %d: %v", currentNum, err)
 						}
-						return nil
-					})
-
-					// Prepare batch concurrently
-					blockGroup.Go(func() error {
-						if err := checkAndTriggerBatchPreparation(blockGroupCtx, block); err != nil {
-							if err != context.Canceled && err != context.DeadlineExceeded {
-								log.Errorf("Error preparing batch for block %d: %s", currentNum, err)
-							}
-							return err
-						}
-						return nil
-					})
-
-					// Store block hash in Redis concurrently
-					blockGroup.Go(func() error {
-						retryOp := func() error {
-							redisCtx, cancel := context.WithTimeout(blockGroupCtx, redisOperationTimeout)
-							defer cancel()
-							return redis.SetWithExpiration(redisCtx,
-								redis.BlockHashByNumber(currentNum),
-								block.Hash().Hex(),
-								30*time.Minute)
-						}
-
-						if err := backoff.Retry(retryOp, backoff.WithContext(backoff.NewExponentialBackOff(), blockGroupCtx)); err != nil {
-							log.Errorf("Failed to store block hash for block %d: %s", currentNum, err)
-							return err
-						}
-						return nil
-					})
-
-					// Wait for this block's operations to complete
-					if err := blockGroup.Wait(); err != nil {
-						log.Errorf("Error in block %d processing: %s", currentNum, err)
-						return err
 					}
+				}()
 
-					// Update last processed block atomically
-					if currentNum > lastProcessedBlock {
-						lastProcessedBlock = currentNum
+				// Check epoch deadlines for all configured data markets
+				wg.Add(1)
+				// use marketProcessingTimeout for batch preparation across all datamarkets
+				marketEpochDeadlineProcessCtx, marketEpochDeadlineProcessCancel := context.WithTimeout(ctx, marketProcessingTimeout)
+				go func() {
+					defer wg.Done()
+					defer marketEpochDeadlineProcessCancel()
+					if err := processEpochDeadlinesForDataMarkets(marketEpochDeadlineProcessCtx, block); err != nil {
+						select {
+						case errChan <- fmt.Errorf("failed to trigger batch preparation for block %d: %v", currentNum, err):
+						default:
+							log.Errorf("failed to trigger batch preparation for block %d: %v", currentNum, err)
+						}
 					}
+				}()
 
-					if currentNum < currentBlockNum {
-						log.Infof("Catching up: Processed block %d, %d more to go", currentNum, currentBlockNum-currentNum)
+				// Store block hash in Redis
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					redisCtx, cancel := context.WithTimeout(ctx, redisOperationTimeout)
+					defer cancel()
+					if err := redis.SetWithExpiration(redisCtx,
+						redis.BlockHashByNumber(currentNum),
+						block.Hash().Hex(),
+						30*time.Minute); err != nil {
+						select {
+						case errChan <- fmt.Errorf("failed to store block hash for block %d: %v", currentNum, err):
+						default:
+							log.Errorf("failed to store block hash for block %d: %v", currentNum, err)
+						}
 					}
+				}()
 
-					return nil
-				})
+				// Wait for all operations to complete
+				go func() {
+					wg.Wait()
+					close(errChan)
+				}()
+
+				// Update last processed block
+				if currentNum > lastProcessedBlock {
+					lastProcessedBlock = currentNum
+				}
+
+				if currentNum < currentBlockNum {
+					log.Infof("Catching up: Processed block %d, %d more to go", currentNum, currentBlockNum-currentNum)
+				}
 			}
-			// Don't wait here - let blocks process independently
 		}
 	}
 }

@@ -34,6 +34,11 @@ type Settings struct {
 	RewardsUpdateEpochInterval  int64
 	AttestorQueuePushEnabled    bool
 	InitCleanupEnabled          bool
+	RedisOperationTimeout       int64
+	BlockFetchTimeout           int64
+	EventProcessingTimeout      int64
+	BatchProcessingTimeout      int64
+	MarketProcessingTimeout     int64
 }
 
 func LoadConfig() {
@@ -129,6 +134,36 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse RETRY_LIMITS environment variable: %v", retryLimitsParseErr)
 	}
 	config.RetryLimits = retryLimits
+
+	redisOperationTimeout, redisTimeoutErr := strconv.ParseInt(getEnv("REDIS_OPERATION_TIMEOUT", ""), 10, 64)
+	if redisTimeoutErr != nil {
+		log.Fatalf("Failed to parse REDIS_OPERATION_TIMEOUT environment variable: %v", redisTimeoutErr)
+	}
+	config.RedisOperationTimeout = redisOperationTimeout
+
+	blockFetchTimeout, blockFetchTimeoutErr := strconv.ParseInt(getEnv("BLOCK_FETCH_TIMEOUT", ""), 10, 64)
+	if blockFetchTimeoutErr != nil {
+		log.Fatalf("Failed to parse BLOCK_FETCH_TIMEOUT environment variable: %v", blockFetchTimeoutErr)
+	}
+	config.BlockFetchTimeout = blockFetchTimeout
+
+	eventProcessingTimeout, eventTimeoutErr := strconv.ParseInt(getEnv("EVENT_PROCESSING_TIMEOUT", ""), 10, 64)
+	if eventTimeoutErr != nil {
+		log.Fatalf("Failed to parse EVENT_PROCESSING_TIMEOUT environment variable: %v", eventTimeoutErr)
+	}
+	config.EventProcessingTimeout = eventProcessingTimeout
+
+	batchProcessingTimeout, batchTimeoutErr := strconv.ParseInt(getEnv("BATCH_PROCESSING_TIMEOUT", ""), 10, 64)
+	if batchTimeoutErr != nil {
+		log.Fatalf("Failed to parse BATCH_PROCESSING_TIMEOUT environment variable: %v", batchTimeoutErr)
+	}
+	config.BatchProcessingTimeout = batchProcessingTimeout
+
+	marketProcessingTimeout, marketTimeoutErr := strconv.ParseInt(getEnv("MARKET_PROCESSING_TIMEOUT", ""), 10, 64)
+	if marketTimeoutErr != nil {
+		log.Fatalf("Failed to parse MARKET_PROCESSING_TIMEOUT environment variable: %v", marketTimeoutErr)
+	}
+	config.MarketProcessingTimeout = marketProcessingTimeout
 
 	SettingsObj = &config
 }
