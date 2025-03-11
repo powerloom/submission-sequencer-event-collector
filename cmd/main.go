@@ -23,6 +23,9 @@ func main() {
 	// Load the config object
 	config.LoadConfig()
 
+	// Initialize timeouts
+	prost.InitializeTimeouts()
+
 	// Initialize reporting service
 	clients.InitializeReportingClient(config.SettingsObj.SlackReportingUrl, 5*time.Second)
 
