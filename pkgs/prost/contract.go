@@ -31,7 +31,6 @@ var (
 	ContractABI         abi.ABI
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
 	BufferEpochs        = 5
-	operationTimeout    = time.Duration(config.SettingsObj.ContractQueryTimeout) * time.Second
 )
 
 func ConfigureClient(ctx context.Context) error {
