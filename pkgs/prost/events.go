@@ -184,8 +184,8 @@ func handleEpochReleasedEvent(ctx context.Context, block *types.Block, vLog type
 			return fmt.Errorf("failed to get submission limit time duration: %w", err)
 		}
 
-		log.Infof("Submission limit time duration for epochID %s, data market %s: %d", newEpochID.String(), dataMarketAddress, submissionLimitTimeDuration)
-		
+		log.Infof("Submission limit time duration for epochID %s, data market %s: %f seconds", newEpochID.String(), dataMarketAddress, submissionLimitTimeDuration.Seconds())
+
 		if err := windowManager.StartSubmissionWindow(ctx, dataMarketAddress, newEpochID, submissionLimitTimeDuration); err != nil {
 			log.Errorf("Failed to start submission window: %v", err)
 			// Don't return error, continue processing other events
