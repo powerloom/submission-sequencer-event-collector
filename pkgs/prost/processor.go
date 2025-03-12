@@ -397,44 +397,41 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 						break
 					}
 
-					// Fallback to recalculation if cached value is not found
-					eligibleNodes := 0
+					// Fetch eligible slots using the helper function instead of contract calls
+					eligibleNodesCount, eligibleSlotIDs := fetchEligibleSlotIDs(ctx, dataMarketAddress, dayToCheck.String())
 
-					// Fetch daily snapshot quota for the specified data market address from Redis
-					dailySnapshotQuota, err := redis.GetDailySnapshotQuota(ctx, dataMarketAddress)
-					if err != nil {
-						log.Errorf("❌ Failed to fetch daily snapshot quota for data market %s: %v", dataMarketAddress, err)
-						return err
-					}
-					cachedTotalNodesCount, err := redis.Get(ctx, redis.TotalNodesCountKey())
-					if err != nil {
-						log.Errorf("❌ Failed to fetch total nodes count for data market %s: %v", dataMarketAddress, err)
-						return err
-					}
+					// Prepare arrays for the relayer
+					slotIDs := make([]*big.Int, 0)
+					submissionsList := make([]*big.Int, 0)
 
-					totalNodesCount, ok := new(big.Int).SetString(cachedTotalNodesCount, 10)
-					if !ok {
-						log.Errorf("❌ Failed to convert total nodes count %s to big.Int", cachedTotalNodesCount)
-						return err
-					}
+					// Get submission counts from Redis for eligible slots
+					for _, slotID := range eligibleSlotIDs {
+						slotIDBigInt, _ := new(big.Int).SetString(slotID, 10)
 
-					for slotID := int64(1); slotID <= totalNodesCount.Int64(); slotID++ {
-						var slotSubmissionCount *big.Int
-						if output, err := MustQuery(ctx, func() (*big.Int, error) {
-							return Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), dayToCheck)
-						}); err == nil {
-							slotSubmissionCount = output
+						key := redis.EligibleSlotSubmissionKey(dataMarketAddress, slotID, dayToCheck.String())
+						slotSubmissionCount, err := redis.Get(ctx, key)
+						if err != nil {
+							log.Errorf("Failed to fetch eligible submission count for slotID %s, data market %s on day %s: %v",
+								slotID, dataMarketAddress, dayToCheck.String(), err)
+							continue
 						}
 
-						if slotSubmissionCount != nil && slotSubmissionCount.Uint64() >= dailySnapshotQuota.Uint64() {
-							eligibleNodes++
+						if slotSubmissionCount != "" {
+							submissionCountBigInt, ok := new(big.Int).SetString(slotSubmissionCount, 10)
+							if !ok {
+								log.Errorf("Failed to convert slot submission count %s to big.Int", slotSubmissionCount)
+								continue
+							}
+
+							slotIDs = append(slotIDs, slotIDBigInt)
+							submissionsList = append(submissionsList, submissionCountBigInt)
 						}
 					}
 
-					log.Infof("Recalculated eligible nodes count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
+					log.Infof("Recalculated eligible nodes count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodesCount)
 
 					// Check if recalculated eligible nodes count is zero
-					if eligibleNodes == 0 {
+					if eligibleNodesCount == 0 {
 						log.Infof("Eligible node count is zero for data market %s on day %s", dataMarketAddress, dayToCheck.String())
 
 						if err := redis.SetBooleanValue(ctx, redis.ZeroCountUpdateKey(dataMarketAddress, dayToCheck.String()), true, 24*time.Hour); err != nil {
@@ -446,8 +443,8 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 						break
 					}
 
-					// Attempt to update using recalculated value
-					if err = SendUpdateRewardsToRelayer(ctx, dataMarketAddress, []*big.Int{}, []*big.Int{}, dayToCheck.String(), eligibleNodes); err != nil {
+					// Send actual submission counts to relayer instead of empty arrays
+					if err = SendUpdateRewardsToRelayer(ctx, dataMarketAddress, slotIDs, submissionsList, dayToCheck.String(), eligibleNodesCount); err != nil {
 						errorMsg := fmt.Sprintf("🚨 Failed to send rewards update for data market %s on day %s using recalculated count: %v", dataMarketAddress, dayToCheck.String(), err)
 						clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 						log.Error(errorMsg)
@@ -455,7 +452,7 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 						continue
 					}
 
-					successMsg := fmt.Sprintf("✅ Successfully updated rewards using recalculated count: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodes)
+					successMsg := fmt.Sprintf("✅ Successfully updated rewards using recalculated count: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), eligibleNodesCount)
 					clients.SendFailureNotification(pkgs.SendEligibleNodesCount, successMsg, time.Now().String(), "High")
 					log.Info(successMsg)
 
