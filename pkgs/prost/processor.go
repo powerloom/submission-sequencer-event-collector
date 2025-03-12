@@ -51,6 +51,7 @@ var (
 	eventProcessingTimeout  time.Duration
 	batchProcessingTimeout  time.Duration
 	marketProcessingTimeout time.Duration
+	contractQueryTimeout    time.Duration
 )
 
 var windowManager *WindowManager
@@ -798,6 +799,7 @@ func InitializeTimeouts() {
 	eventProcessingTimeout = time.Second * time.Duration(config.SettingsObj.EventProcessingTimeout)
 	batchProcessingTimeout = time.Second * time.Duration(config.SettingsObj.BatchProcessingTimeout)
 	marketProcessingTimeout = time.Second * time.Duration(config.SettingsObj.MarketProcessingTimeout)
+	contractQueryTimeout = time.Second * time.Duration(config.SettingsObj.ContractQueryTimeout)
 }
 
 func InitializeProcessor() {

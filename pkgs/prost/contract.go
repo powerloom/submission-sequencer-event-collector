@@ -78,7 +78,7 @@ func MustQuery[T any](parentCtx context.Context, queryFn func() (T, error)) (T, 
 	var err error
 
 	// Simple, independent timeout
-	opCtx, opCancel := context.WithTimeout(context.Background(), operationTimeout)
+	opCtx, opCancel := context.WithTimeout(context.Background(), contractQueryTimeout)
 	defer opCancel()
 
 	operation := func() error {
