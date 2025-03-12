@@ -802,6 +802,6 @@ func InitializeTimeouts() {
 	contractQueryTimeout = time.Second * time.Duration(config.SettingsObj.ContractQueryTimeout)
 }
 
-func InitializeProcessor() {
+func InitializeSubmissionWindowProcessor() {
 	windowManager = NewWindowManager()
 }

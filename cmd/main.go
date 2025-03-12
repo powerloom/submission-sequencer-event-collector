@@ -26,6 +26,8 @@ func main() {
 	// Initialize timeouts
 	prost.InitializeTimeouts()
 
+	// Initialize submission window processor
+	prost.InitializeSubmissionWindowProcessor()
 	// Initialize reporting service
 	clients.InitializeReportingClient(config.SettingsObj.SlackReportingUrl, 5*time.Second)
 
