@@ -34,6 +34,7 @@ type Settings struct {
 	RewardsUpdateEpochInterval  int64
 	AttestorQueuePushEnabled    bool
 	InitCleanupEnabled          bool
+	ContractQueryTimeout        int64
 	RedisOperationTimeout       int64
 	BlockFetchTimeout           int64
 	EventProcessingTimeout      int64
@@ -134,6 +135,12 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse RETRY_LIMITS environment variable: %v", retryLimitsParseErr)
 	}
 	config.RetryLimits = retryLimits
+
+	contractQueryTimeout, contractQueryTimeoutParseErr := strconv.ParseInt(getEnv("CONTRACT_QUERY_TIMEOUT", ""), 10, 64)
+	if contractQueryTimeoutParseErr != nil {
+		log.Fatalf("Failed to parse CONTRACT_QUERY_TIMEOUT environment variable: %v", contractQueryTimeoutParseErr)
+	}
+	config.ContractQueryTimeout = contractQueryTimeout
 
 	redisOperationTimeout, redisTimeoutErr := strconv.ParseInt(getEnv("REDIS_OPERATION_TIMEOUT", ""), 10, 64)
 	if redisTimeoutErr != nil {

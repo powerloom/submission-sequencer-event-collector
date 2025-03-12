@@ -3,10 +3,12 @@ package prost
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"math/big"
 	"net/http"
 	"strings"
 	"submission-sequencer-collector/config"
+	pkgs "submission-sequencer-collector/pkgs"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/contract"
 	"submission-sequencer-collector/pkgs/dataMarketContract"
@@ -29,6 +31,7 @@ var (
 	ContractABI         abi.ABI
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
 	BufferEpochs        = 5
+	operationTimeout    = time.Duration(config.SettingsObj.ContractQueryTimeout) * time.Second
 )
 
 func ConfigureClient(ctx context.Context) error {
@@ -70,30 +73,33 @@ func ConfigureABI() {
 	ContractABI = contractABI
 }
 
-func MustQuery[K any](ctx context.Context, call func() (val K, err error)) (K, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+func MustQuery[T any](parentCtx context.Context, queryFn func() (T, error)) (T, error) {
+	var result T
+	var err error
 
-	expBackOff := backoff.NewConstantBackOff(1 * time.Second)
-	var val K
+	// Simple, independent timeout
+	opCtx, opCancel := context.WithTimeout(context.Background(), operationTimeout)
+	defer opCancel()
 
 	operation := func() error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			var err error
-			val, err = call()
+		localResult, err := queryFn()
+		if err != nil {
 			return err
 		}
+		result = localResult
+		return nil
 	}
 
-	err := backoff.Retry(operation, backoff.WithContext(expBackOff, ctx))
+	// Use our independent context for retries
+	err = backoff.Retry(operation, backoff.WithContext(backoff.NewExponentialBackOff(), opCtx))
 	if err != nil {
-		clients.SendFailureNotification("Contract query error [MustQuery]", err.Error(), time.Now().String(), "High")
-		return *new(K), err
+		errMsg := fmt.Sprintf("Contract query error [MustQuery]: %s", err)
+		clients.SendFailureNotification(pkgs.MustQuery, errMsg, time.Now().String(), "High")
+		log.Error(errMsg)
+		return result, fmt.Errorf("contract query error: %w", err)
 	}
-	return val, nil
+
+	return result, nil
 }
 
 func LoadContractStateVariables(ctx context.Context) error {
@@ -204,19 +210,19 @@ func isValidDataMarketAddress(dataMarketAddress string) bool {
 	return false
 }
 
-// calculateSubmissionLimitBlock computes the block number when the submission window ends
-func calculateSubmissionLimitBlock(ctx context.Context, dataMarketAddress string, epochReleaseBlock *big.Int) (*big.Int, error) {
+// getSubmissionLimitTimeDuration returns the time duration when the submission window ends as configured on contract
+func getSubmissionLimitTimeDuration(ctx context.Context, dataMarketAddress string) (time.Duration, error) {
 	submissionLimitStr, err := redis.RedisClient.HGet(ctx, redis.GetSubmissionLimitTableKey(), dataMarketAddress).Result()
 	if err != nil {
 		log.Errorf("Error fetching submission limit for data market %s: %s", dataMarketAddress, err)
-		return nil, err
+		return 0, err
 	}
 
 	submissionLimit, ok := new(big.Int).SetString(submissionLimitStr, 10)
 	if !ok {
 		log.Errorf("Invalid submission limit value for data market %s: %s", dataMarketAddress, submissionLimitStr)
-		return nil, err
+		return 0, err
 	}
 
-	return new(big.Int).Add(epochReleaseBlock, submissionLimit), nil
+	return time.Duration(submissionLimit.Int64()) * time.Second, nil
 }

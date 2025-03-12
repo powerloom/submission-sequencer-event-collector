@@ -48,11 +48,12 @@ import (
 var (
 	redisOperationTimeout   time.Duration
 	blockFetchTimeout       time.Duration
-	blockProcessTimeout     time.Duration
 	eventProcessingTimeout  time.Duration
 	batchProcessingTimeout  time.Duration
 	marketProcessingTimeout time.Duration
 )
+
+var windowManager *WindowManager
 
 // Note: All type definitions have been moved to types.go in the same package (prost).
 // The following types are imported implicitly:
@@ -795,4 +796,8 @@ func InitializeTimeouts() {
 	eventProcessingTimeout = time.Second * time.Duration(config.SettingsObj.EventProcessingTimeout)
 	batchProcessingTimeout = time.Second * time.Duration(config.SettingsObj.BatchProcessingTimeout)
 	marketProcessingTimeout = time.Second * time.Duration(config.SettingsObj.MarketProcessingTimeout)
+}
+
+func InitializeProcessor() {
+	windowManager = NewWindowManager()
 }

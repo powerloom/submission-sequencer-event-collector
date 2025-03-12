@@ -26,6 +26,7 @@ var (
 func cleanup() {
 	shutdownOnce.Do(func() {
 		log.Info("Cleaning up resources")
+		windowManager.Shutdown()
 	})
 }
 

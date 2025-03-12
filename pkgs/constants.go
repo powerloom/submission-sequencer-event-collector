@@ -14,6 +14,7 @@ const (
 	HandleDayTransition             = "SequencerEventCollector: HandleDayTransition"
 	TriggerBatchPreparation         = "SequencerEventCollector: TriggerBatchPreparation"
 	CheckAndTriggerBatchPreparation = "SequencerEventCollector: CheckAndTriggerBatchPreparation"
+	MustQuery                       = "SequencerEventCollector: MustQuery"
 )
 
 // General Key Constants
