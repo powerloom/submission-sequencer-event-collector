@@ -67,7 +67,6 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 
 		select {
 		case <-window.Timer.C:
-			// Only this section changes - create fresh context
 			batchCtx, batchCancel := context.WithTimeout(context.Background(), batchProcessingTimeout)
 			defer batchCancel()
 
