@@ -62,14 +62,21 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 
 	// Start monitoring goroutine
 	go func() {
+		log.Infof("🚀 Goroutine started for epoch %s in market %s", epochID, dataMarketAddress)
+
 		defer func() {
+			log.Infof("🧹 Cleanup triggered for epoch %s in market %s", epochID, dataMarketAddress)
 			window.Timer.Stop()
 			close(window.Done)
 			wm.removeWindow(dataMarketAddress, epochID)
 		}()
 
+		log.Infof("⏰ Waiting for timer to expire for epoch %s in market %s (duration: %v)",
+			epochID, dataMarketAddress, windowDuration)
+
 		select {
 		case <-window.Timer.C:
+			log.Infof("⌛ Timer expired for epoch %s in market %s", epochID, dataMarketAddress)
 			// Get current block number when window expires
 			currentBlock, err := Client.BlockNumber(context.Background())
 			if err != nil {
@@ -88,14 +95,16 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 					epochID, dataMarketAddress, err)
 			}
 		case <-ctx.Done():
+			log.Infof("📝 Context cancelled for epoch %s in market %s", epochID, dataMarketAddress)
 			return
 		case <-wm.done:
+			log.Infof("🛑 Window manager shutdown signal received for epoch %s in market %s",
+				epochID, dataMarketAddress)
 			return
 		}
 	}()
 
-	log.Infof("⏲️ Started submission window for epochID %s, data market %s, duration: %f seconds",
-		epochID, dataMarketAddress, windowDuration)
+	log.Infof("⏲️ Started submission window for epochID %s, data market %s, duration: %f seconds", epochID, dataMarketAddress, windowDuration.Seconds())
 	return nil
 }
 
