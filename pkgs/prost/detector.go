@@ -105,22 +105,6 @@ func StartFetchingBlocks(ctx context.Context) {
 					}
 				}()
 
-				// Check epoch deadlines for all configured data markets
-				wg.Add(1)
-				// use marketProcessingTimeout for batch preparation across all datamarkets
-				marketEpochDeadlineProcessCtx, marketEpochDeadlineProcessCancel := context.WithTimeout(ctx, marketProcessingTimeout)
-				go func() {
-					defer wg.Done()
-					defer marketEpochDeadlineProcessCancel()
-					if err := processEpochDeadlinesForDataMarkets(marketEpochDeadlineProcessCtx, block); err != nil {
-						select {
-						case errChan <- fmt.Errorf("failed to trigger batch preparation for block %d: %v", currentNum, err):
-						default:
-							log.Errorf("failed to trigger batch preparation for block %d: %v", currentNum, err)
-						}
-					}
-				}()
-
 				// Store block hash in Redis
 				wg.Add(1)
 				go func() {
