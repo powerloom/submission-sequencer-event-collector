@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs"
 	"submission-sequencer-collector/pkgs/clients"
@@ -178,14 +177,19 @@ func handleEpochReleasedEvent(ctx context.Context, block *types.Block, vLog type
 
 		log.Debugf("Detected epoch released event at block %d for data market %s with epochID %s", block.Header().Number, dataMarketAddress, newEpochID.String())
 
-		// Calculate the submission limit block based on the epoch release block number (current block number)
-		submissionLimitBlockNumber, err := calculateSubmissionLimitBlock(ctx, dataMarketAddress, new(big.Int).Set(block.Number()))
+		// Get submission window duration from contract or config
+		submissionLimitTimeDuration, err := getSubmissionLimitTimeDuration(ctx, dataMarketAddress)
 		if err != nil {
-			log.Errorf("Failed to calculate submission limit block number for data market %s, epoch ID %s, block %d: %s", dataMarketAddress, newEpochID.String(), block.Number().Int64(), err.Error())
-			return fmt.Errorf("failed to calculate submission limit block: %w", err)
+			log.Errorf("Failed to get submission limit time duration for data market %s, epoch ID %s, block %d: %s", dataMarketAddress, newEpochID.String(), block.Number().Int64(), err.Error())
+			return fmt.Errorf("failed to get submission limit time duration: %w", err)
 		}
 
-		log.Infof("Calculated Submission Limit Block Number for epochID %s, data market %s: %d", newEpochID.String(), dataMarketAddress, submissionLimitBlockNumber.Int64())
+		log.Infof("⏲️ Beginning submission window for epochID %s, data market %s, duration: %f seconds", newEpochID.String(), dataMarketAddress, submissionLimitTimeDuration.Seconds())
+
+		if err := windowManager.StartSubmissionWindow(ctx, dataMarketAddress, newEpochID, submissionLimitTimeDuration, block.Number().Int64()); err != nil {
+			log.Errorf("Failed to start submission window: %v", err)
+			// Don't return error, continue processing other events
+		}
 
 		// Send updateRewards to relayer when current epoch is a multiple of epoch interval (config param)
 		if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
@@ -197,30 +201,6 @@ func handleEpochReleasedEvent(ctx context.Context, block *types.Block, vLog type
 				return fmt.Errorf("failed to send reward updates: %w", err)
 			}
 		}
-
-		// Prepare the epoch marker details
-		epochMarkerDetails := EpochMarkerDetails{
-			EpochReleaseBlockNumber:    block.Number().Int64(),
-			SubmissionLimitBlockNumber: submissionLimitBlockNumber.Int64(),
-		}
-
-		epochMarkerDetailsJSON, err := json.Marshal(epochMarkerDetails)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Failed to marshal epoch marker details for data market %s, epochID %s: %s", dataMarketAddress, newEpochID.String(), err.Error())
-			clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
-			log.Error(errorMsg)
-			return fmt.Errorf("failed to marshal epoch marker details: %w", err)
-		}
-
-		// Store the details associated with the new epoch in Redis
-		if err := redis.StoreEpochDetails(ctx, dataMarketAddress, newEpochID.String(), string(epochMarkerDetailsJSON)); err != nil {
-			errorMsg := fmt.Sprintf("Failed to store epoch marker details for epochID %s, data market %s in Redis: %s", newEpochID.String(), dataMarketAddress, err.Error())
-			clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
-			log.Error(errorMsg)
-			return fmt.Errorf("failed to store epoch marker details: %w", err)
-		}
-
-		log.Infof("✅ Successfully stored epoch marker details for epochID %s, data market %s in Redis", newEpochID.String(), dataMarketAddress)
 	}
 
 	return nil
