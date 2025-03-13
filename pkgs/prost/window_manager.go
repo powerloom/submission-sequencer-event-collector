@@ -38,7 +38,7 @@ func NewWindowManager() *WindowManager {
 	}
 }
 
-func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAddress string, epochID *big.Int, windowDuration time.Duration, startBlockNum int64) error {
+func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMarketAddress string, epochID *big.Int, windowDuration time.Duration, startBlockNum int64) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
@@ -46,6 +46,9 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 	if _, exists := wm.activeWindows[key]; exists {
 		return fmt.Errorf("❌ submission window already active for epoch %s in market %s", epochID, dataMarketAddress)
 	}
+
+	// Create a new background context for the timer
+	timerCtx, cancelTimer := context.WithTimeout(context.Background(), windowDuration)
 
 	window := &EpochWindow{
 		EpochID:           epochID,
@@ -65,6 +68,7 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		log.Infof("🚀 Goroutine started for epoch %s in market %s", epochID, dataMarketAddress)
 
 		defer func() {
+			cancelTimer() // Clean up the timer context
 			log.Infof("🧹 Cleanup triggered for epoch %s in market %s", epochID, dataMarketAddress)
 			window.Timer.Stop()
 			close(window.Done)
@@ -94,8 +98,11 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 				log.Errorf("❌ Failed to trigger batch preparation for epoch %s in market %s: %v",
 					epochID, dataMarketAddress, err)
 			}
-		case <-ctx.Done():
-			log.Infof("📝 Context cancelled for epoch %s in market %s", epochID, dataMarketAddress)
+		case <-timerCtx.Done(): // Use the timer context for the duration
+			log.Infof("⏰ Timer context completed for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
+			return
+		case <-parentCtx.Done(): // Keep parent context for shutdown scenarios
+			log.Infof("📝 Parent context cancelled for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
 			return
 		case <-wm.done:
 			log.Infof("🛑 Window manager shutdown signal received for epoch %s in market %s",
@@ -104,7 +111,8 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		}
 	}()
 
-	log.Infof("⏲️ Started submission window for epochID %s, data market %s, duration: %f seconds", epochID, dataMarketAddress, windowDuration.Seconds())
+	log.Infof("⏲️ Started submission window for epochID %s, data market %s, duration: %f seconds",
+		epochID, dataMarketAddress, windowDuration.Seconds())
 	return nil
 }
 
