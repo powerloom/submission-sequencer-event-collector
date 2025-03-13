@@ -797,7 +797,6 @@ func InitializeTimeouts() {
 	blockFetchTimeout = time.Second * time.Duration(config.SettingsObj.BlockFetchTimeout)
 	eventProcessingTimeout = time.Second * time.Duration(config.SettingsObj.EventProcessingTimeout)
 	batchProcessingTimeout = time.Second * time.Duration(config.SettingsObj.BatchProcessingTimeout)
-	marketProcessingTimeout = time.Second * time.Duration(config.SettingsObj.MarketProcessingTimeout)
 	contractQueryTimeout = time.Second * time.Duration(config.SettingsObj.ContractQueryTimeout)
 }
 
