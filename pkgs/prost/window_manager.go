@@ -47,9 +47,6 @@ func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMa
 		return fmt.Errorf("❌ submission window already active for epoch %s in market %s", epochID, dataMarketAddress)
 	}
 
-	// Create a new background context for the timer
-	timerCtx, cancelTimer := context.WithTimeout(context.Background(), windowDuration)
-
 	window := &EpochWindow{
 		EpochID:           epochID,
 		DataMarketAddress: dataMarketAddress,
@@ -63,13 +60,12 @@ func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMa
 	window.Timer = time.NewTimer(windowDuration)
 	wm.activeWindows[key] = window
 
-	// Start monitoring goroutine
+	// Start monitoring goroutine - using background context
 	go func() {
-		log.Infof("🚀 Goroutine started for epoch %s in market %s", epochID, dataMarketAddress)
+		log.Infof("🚀 Goroutine started for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
 
 		defer func() {
-			cancelTimer() // Clean up the timer context
-			log.Infof("🧹 Cleanup triggered for epoch %s in market %s", epochID, dataMarketAddress)
+			log.Infof("🧹 Cleanup triggered for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
 			window.Timer.Stop()
 			close(window.Done)
 			wm.removeWindow(dataMarketAddress, epochID)
@@ -98,12 +94,6 @@ func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMa
 				log.Errorf("❌ Failed to trigger batch preparation for epoch %s in market %s: %v",
 					epochID, dataMarketAddress, err)
 			}
-		case <-timerCtx.Done(): // Use the timer context for the duration
-			log.Infof("⏰ Timer context completed for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
-			return
-		case <-parentCtx.Done(): // Keep parent context for shutdown scenarios
-			log.Infof("📝 Parent context cancelled for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
-			return
 		case <-wm.done:
 			log.Infof("🛑 Window manager shutdown signal received for epoch %s in market %s",
 				epochID, dataMarketAddress)
