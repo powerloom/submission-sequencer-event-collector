@@ -38,7 +38,7 @@ func NewWindowManager() *WindowManager {
 	}
 }
 
-func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMarketAddress string, epochID *big.Int, windowDuration time.Duration, startBlockNum int64) error {
+func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAddress string, epochID *big.Int, windowDuration time.Duration, startBlockNum int64) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
@@ -60,7 +60,7 @@ func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMa
 	window.Timer = time.NewTimer(windowDuration)
 	wm.activeWindows[key] = window
 
-	// Start monitoring goroutine - using background context
+	// Start monitoring goroutine - completely independent of parent context
 	go func() {
 		log.Infof("🚀 Goroutine started for submission window processing for epoch %s in market %s", epochID, dataMarketAddress)
 
@@ -77,6 +77,7 @@ func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMa
 		select {
 		case <-window.Timer.C:
 			log.Infof("⌛ Timer expired for epoch %s in market %s", epochID, dataMarketAddress)
+
 			// Get current block number when window expires
 			currentBlock, err := Client.BlockNumber(context.Background())
 			if err != nil {
@@ -85,8 +86,11 @@ func (wm *WindowManager) StartSubmissionWindow(parentCtx context.Context, dataMa
 				return
 			}
 			window.EndBlockNum = int64(currentBlock)
+
 			log.Infof("🪟Window for epoch %s in market %s begin at block %d, duration: %v ended at block %d",
 				epochID, dataMarketAddress, window.StartBlockNum, windowDuration, window.EndBlockNum)
+
+			// Create a fresh context with appropriate timeout for batch processing
 			batchCtx, batchCancel := context.WithTimeout(context.Background(), batchProcessingTimeout)
 			defer batchCancel()
 

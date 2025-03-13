@@ -109,9 +109,7 @@ func StartFetchingBlocks(ctx context.Context) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					redisCtx, cancel := context.WithTimeout(ctx, redisOperationTimeout)
-					defer cancel()
-					if err := redis.SetWithExpiration(redisCtx,
+					if err := redis.SetWithExpiration(ctx,
 						redis.BlockHashByNumber(currentNum),
 						block.Hash().Hex(),
 						30*time.Minute); err != nil {
