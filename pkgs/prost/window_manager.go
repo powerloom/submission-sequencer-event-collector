@@ -17,6 +17,8 @@ type EpochWindow struct {
 	WindowDuration    time.Duration
 	Timer             *time.Timer
 	Done              chan struct{}
+	StartBlockNum     int64 // Track block number when epoch was released
+	EndBlockNum       int64 // Will be set when window expires
 }
 
 type WindowManager struct {
@@ -36,13 +38,13 @@ func NewWindowManager() *WindowManager {
 	}
 }
 
-func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAddress string, epochID *big.Int, windowDuration time.Duration) error {
+func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAddress string, epochID *big.Int, windowDuration time.Duration, startBlockNum int64) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
 	key := newEpochWindowKey(dataMarketAddress, epochID)
 	if _, exists := wm.activeWindows[key]; exists {
-		return fmt.Errorf("submission window already active for epoch %s in market %s", epochID, dataMarketAddress)
+		return fmt.Errorf("❌ submission window already active for epoch %s in market %s", epochID, dataMarketAddress)
 	}
 
 	window := &EpochWindow{
@@ -51,6 +53,7 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		StartTime:         time.Now(),
 		WindowDuration:    windowDuration,
 		Done:              make(chan struct{}),
+		StartBlockNum:     startBlockNum,
 	}
 
 	// Create timer for batch preparation
@@ -67,11 +70,21 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 
 		select {
 		case <-window.Timer.C:
+			// Get current block number when window expires
+			currentBlock, err := Client.BlockNumber(context.Background())
+			if err != nil {
+				log.Errorf("Failed to get current block number for epoch %s in market %s: %v",
+					epochID, dataMarketAddress, err)
+				return
+			}
+			window.EndBlockNum = int64(currentBlock)
+			log.Infof("🪟Window for epoch %s in market %s begin at block %d, duration: %v ended at block %d",
+				epochID, dataMarketAddress, window.StartBlockNum, windowDuration, window.EndBlockNum)
 			batchCtx, batchCancel := context.WithTimeout(context.Background(), batchProcessingTimeout)
 			defer batchCancel()
 
-			if err := triggerBatchPreparation(batchCtx, dataMarketAddress, epochID, 0, 0); err != nil {
-				log.Errorf("Failed to trigger batch preparation for epoch %s in market %s: %v",
+			if err := triggerBatchPreparation(batchCtx, dataMarketAddress, epochID, window.StartBlockNum, window.EndBlockNum); err != nil {
+				log.Errorf("❌ Failed to trigger batch preparation for epoch %s in market %s: %v",
 					epochID, dataMarketAddress, err)
 			}
 		case <-ctx.Done():
@@ -81,7 +94,7 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		}
 	}()
 
-	log.Infof("Started submission window for epoch %s in market %s, duration: %v",
+	log.Infof("⏲️ Started submission window for epochID %s, data market %s, duration: %f seconds",
 		epochID, dataMarketAddress, windowDuration)
 	return nil
 }

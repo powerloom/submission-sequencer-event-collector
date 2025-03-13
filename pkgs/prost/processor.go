@@ -46,12 +46,11 @@ import (
 
 // Timeout durations for various operations
 var (
-	redisOperationTimeout   time.Duration
-	blockFetchTimeout       time.Duration
-	eventProcessingTimeout  time.Duration
-	batchProcessingTimeout  time.Duration
-	marketProcessingTimeout time.Duration
-	contractQueryTimeout    time.Duration
+	redisOperationTimeout  time.Duration
+	blockFetchTimeout      time.Duration
+	eventProcessingTimeout time.Duration
+	batchProcessingTimeout time.Duration
+	contractQueryTimeout   time.Duration
 )
 
 var windowManager *WindowManager
