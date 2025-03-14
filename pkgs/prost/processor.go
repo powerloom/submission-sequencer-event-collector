@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"runtime"
 	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
@@ -61,116 +60,6 @@ var windowManager *WindowManager
 // - SubmissionDetails
 // - DayTransitionEpochInfo
 // - RelayerRequestBody
-
-// Entry point for market processing
-func checkAndTriggerBatchPreparation(ctx context.Context, dataMarketAddress string, currentBlockNum int64) (err error) {
-	// Panic recovery
-	defer func() {
-		if r := recover(); r != nil {
-			buf := make([]byte, 2048)
-			n := runtime.Stack(buf, false)
-			errMsg := fmt.Sprintf("Panic in market data processing for data market %s at block %d: %v\nStack:\n%s",
-				dataMarketAddress, currentBlockNum, r, buf[:n])
-			log.Error(errMsg)
-			clients.SendFailureNotification(pkgs.ProcessMarketData,
-				fmt.Sprintf("Panic in market data processing for data market %s at block %d: %v",
-					dataMarketAddress, currentBlockNum, r), time.Now().String(), "High")
-			err = fmt.Errorf("panic recovered: %v", r)
-		}
-	}()
-
-	// Fetch epoch markers with timeout
-	epochMarkerKeys, err := redis.RedisClient.SMembers(ctx, redis.EpochMarkerSet(dataMarketAddress)).Result()
-	if err != nil {
-		return fmt.Errorf("failed to fetch epoch markers: %w", err)
-	}
-
-	log.Infof("Fetched %d epoch marker keys for data market %s", len(epochMarkerKeys), dataMarketAddress)
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(epochMarkerKeys))
-
-	for _, epochMarkerKey := range epochMarkerKeys {
-		epochMarkerKey := epochMarkerKey
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := processSingleEpoch(ctx, dataMarketAddress, epochMarkerKey, currentBlockNum); err != nil {
-				select {
-				case errChan <- fmt.Errorf("epoch %s: %w", epochMarkerKey, err):
-				default:
-					log.Errorf("Error channel full: %v", err)
-				}
-			}
-		}()
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	// Collect errors
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("multiple errors: %v", errs)
-	}
-	return nil
-}
-
-func processSingleEpoch(ctx context.Context, dataMarketAddress, epochMarkerKey string, currentBlockNum int64) error {
-	// Check context before starting
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	// Retrieve the epoch marker details from Redis
-	epochMarkerDetailsJSON, err := redis.RedisClient.Get(ctx, redis.EpochMarkerDetails(dataMarketAddress, epochMarkerKey)).Result()
-	if err != nil {
-		errMsg := fmt.Sprintf("Failed to fetch epoch marker details from Redis for key %s: %s", epochMarkerKey, err)
-		clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
-		log.Error(errMsg)
-		return fmt.Errorf("failed to fetch epoch marker details: %w", err)
-	}
-
-	var epochMarkerDetails EpochMarkerDetails
-	if err := json.Unmarshal([]byte(epochMarkerDetailsJSON), &epochMarkerDetails); err != nil {
-		errMsg := fmt.Sprintf("Failed to unmarshal epoch marker details for key %s: %s", epochMarkerKey, err)
-		clients.SendFailureNotification(pkgs.CheckAndTriggerBatchPreparation, errMsg, time.Now().String(), "High")
-		log.Error(errMsg)
-		return fmt.Errorf("failed to unmarshal epoch marker details: %w", err)
-	}
-
-	// Check if the current block number matches the submission limit block number for this epoch
-	if currentBlockNum == epochMarkerDetails.SubmissionLimitBlockNumber {
-		log.Infof("🔄 Initiating batch preparation for epoch %s, data market %s at submission limit block number: %d",
-			epochMarkerKey, dataMarketAddress, currentBlockNum)
-
-		// Convert the epoch ID string to big.Int for further processing
-		epochID, ok := big.NewInt(0).SetString(epochMarkerKey, 10)
-		if !ok {
-			log.Errorf("Failed to convert epochID %s to big.Int for data market %s", epochMarkerKey, dataMarketAddress)
-			return fmt.Errorf("failed to convert epochID %s to big.Int", epochMarkerKey)
-		}
-
-		// Note: ctx here already has the batchPreparationTimeout from the parent
-		// This ensures all batch preparation operations must complete within the 90s timeout
-		if err := triggerBatchPreparation(ctx, dataMarketAddress, epochID,
-			epochMarkerDetails.EpochReleaseBlockNumber, currentBlockNum); err != nil {
-			if err != context.Canceled && err != context.DeadlineExceeded {
-				log.Errorf("Failed to trigger batch preparation for epoch %s in data market %s: %v",
-					epochMarkerKey, dataMarketAddress, err)
-				return fmt.Errorf("failed to trigger batch preparation: %w", err)
-			}
-			return err
-		}
-
-		log.Infof("✅ Completed batch preparation for epoch %s in data market %s", epochMarkerKey, dataMarketAddress)
-	}
-
-	return nil
-}
 
 func triggerBatchPreparation(ctx context.Context, dataMarketAddress string, epochID *big.Int, startBlockNum, endBlockNum int64) error {
 	blockCount := endBlockNum - startBlockNum + 1

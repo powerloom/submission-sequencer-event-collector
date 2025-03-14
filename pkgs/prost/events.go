@@ -104,58 +104,6 @@ func ProcessEvents(ctx context.Context, block *types.Block) error {
 	return nil
 }
 
-// processEpochDeadlinesForDataMarkets checks conditions and triggers batch preparation if needed
-func processEpochDeadlinesForDataMarkets(ctx context.Context, block *types.Block) error {
-	if block == nil {
-		return fmt.Errorf("received nil block")
-	}
-
-	currentBlockNum := block.Number().Int64()
-	log.Infof("🔍 Starting batch preparation check for block number: %d", currentBlockNum)
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(config.SettingsObj.DataMarketAddresses))
-
-	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		dataMarketAddress := dataMarketAddress
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			// Create timeout context for market processing, use batchProcessingTimeout for batch preparation for a datamarket
-			marketCtx, cancel := context.WithTimeout(ctx, batchProcessingTimeout)
-			defer cancel()
-
-			log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
-			if err := checkAndTriggerBatchPreparation(marketCtx, dataMarketAddress, currentBlockNum); err != nil {
-				select {
-				case errChan <- fmt.Errorf("market %s: %w", dataMarketAddress, err):
-				default:
-					log.Errorf("error channel full: market %s failed: %v", dataMarketAddress, err)
-				}
-			}
-		}()
-	}
-
-	// Close error channel after all goroutines complete
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	// Collect errors
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("multiple market processing errors: %v", errs)
-	}
-
-	return nil
-}
-
 // handleEpochReleasedEvent processes epoch released events
 func handleEpochReleasedEvent(ctx context.Context, block *types.Block, vLog types.Log) error {
 	log.Debugf("EpochReleased event detected in block %d", block.Number().Int64())
