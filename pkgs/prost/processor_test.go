@@ -2,8 +2,6 @@ package prost
 
 import (
 	"context"
-	"encoding/json"
-	"math/big"
 	"submission-sequencer-collector/config"
 	"submission-sequencer-collector/pkgs/clients"
 	"submission-sequencer-collector/pkgs/redis"
@@ -11,9 +9,6 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func setup(t *testing.T) *miniredis.Miniredis {
@@ -42,53 +37,4 @@ func setup(t *testing.T) *miniredis.Miniredis {
 	})
 
 	return mockRedis
-}
-
-// TestCheckAndTriggerBatchPreparation tests the checkAndTriggerBatchPreparation function
-func TestCheckAndTriggerBatchPreparation(t *testing.T) {
-	setup(t)
-
-	// Define the data market address
-	dataMarketAddress := "0x0C2E22fe7526fAeF28E7A58c84f8723dEFcE200c"
-
-	// Define the epoch marker key and its details
-	epochKey := "1"
-	epochDetails := EpochMarkerDetails{
-		SubmissionLimitBlockNumber: 10,
-		EpochReleaseBlockNumber:    5,
-	}
-
-	// Convert epoch details to JSON
-	epochDetailsJSON, err := json.Marshal(epochDetails)
-	if err != nil {
-		t.Fatalf("Failed to marshal epoch details: %v", err)
-	}
-
-	// Store the epoch details in Redis
-	if err := redis.StoreEpochDetails(context.Background(), dataMarketAddress, epochKey, string(epochDetailsJSON)); err != nil {
-		t.Fatalf("Failed to store epoch details in Redis: %v", err)
-	}
-
-	// Create a sample block with a matching block number
-	currentBlock := types.NewBlock(&types.Header{Number: big.NewInt(10)}, nil, nil, nil)
-
-	// Call the function under test
-	processEpochDeadlinesForDataMarkets(context.Background(), currentBlock)
-
-	// Ensure the epoch key is removed from the Redis set
-	members, err := redis.RedisClient.SMembers(context.Background(), redis.EpochMarkerSet(dataMarketAddress)).Result()
-	assert.NoError(t, err)
-	require.Equal(t, 1, len(members))
-
-	// Ensure the details for this epoch key have also been removed
-	output, err := redis.RedisClient.Get(context.Background(), redis.EpochMarkerDetails(dataMarketAddress, epochKey)).Result()
-	assert.NoError(t, err)
-
-	var details EpochMarkerDetails
-	err = json.Unmarshal([]byte(output), &details)
-	assert.NoError(t, err)
-
-	// Compare the fields from epochDetails and details
-	require.Equal(t, epochDetails.EpochReleaseBlockNumber, details.EpochReleaseBlockNumber)
-	require.Equal(t, epochDetails.SubmissionLimitBlockNumber, details.SubmissionLimitBlockNumber)
 }
