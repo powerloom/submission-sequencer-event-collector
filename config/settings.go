@@ -38,6 +38,7 @@ type Settings struct {
 	BlockFetchTimeout           int64
 	EventProcessingTimeout      int64
 	BatchProcessingTimeout      int64
+	MemoryProfilingInterval     int
 }
 
 func LoadConfig() {
@@ -157,6 +158,12 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse BATCH_PROCESSING_TIMEOUT environment variable: %v", batchTimeoutErr)
 	}
 	config.BatchProcessingTimeout = batchProcessingTimeout
+
+	memoryProfilingInterval, memoryProfilingIntervalParseErr := strconv.Atoi(getEnv("MEMORY_PROFILING_INTERVAL", "15"))
+	if memoryProfilingIntervalParseErr != nil {
+		log.Fatalf("Failed to parse MEMORY_PROFILING_INTERVAL environment variable: %v", memoryProfilingIntervalParseErr)
+	}
+	config.MemoryProfilingInterval = memoryProfilingInterval
 
 	SettingsObj = &config
 }
