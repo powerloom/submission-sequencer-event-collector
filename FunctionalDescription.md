@@ -36,6 +36,7 @@ const (
     // Processing timeouts
     eventProcessingTimeout = 30 * time.Second
     batchProcessingTimeout = 30 * time.Second
+    blockFetchTimeout = 5 * time.Second
     
     // Market-level timeouts
     marketProcessingTimeout = 120 * time.Second
@@ -52,14 +53,16 @@ StartFetchingBlocks(ctx)
 └── For each tick:
     ├── → Client.HeaderByNumber(fetchCtx) [latest block]
     └── For each block:
+        ├── blockSemaphore := make(chan struct{}, 3)
         ├── → fetchBlock(blockCtx)
         │   └── → Client.BlockByNumber with retry
         │
         ├── errChan := make(chan error, 3)
         ├── var wg sync.WaitGroup
         │
-        ├── ⟿ ProcessEvents(eventProcessCtx)
+        ├── ⟿ ProcessEvents(independent eventCtx)
         │   ├── → Client.FilterLogs with retry
+        │   ├── eventSemaphore := make(chan struct{}, 2)
         │   ├── errChan := make(chan error, len(logs))
         │   ├── var wg sync.WaitGroup
         │   └── For each log:
@@ -67,7 +70,14 @@ StartFetchingBlocks(ctx)
         │          ├── → handleEpochReleasedEvent
         │          │   ├── → Instance.ParseEpochReleased
         │          │   ├── → calculateSubmissionLimitBlock
-        │          │   ├── → sendRewardUpdates (if interval)
+        │          │   ├── → StartSubmissionWindow(independent context)
+        │          │   │   └── ⟿ Window Management
+        │          │   │       ├── windowSemaphore := make(chan struct{}, maxWindows)
+        │          │   │       └── Monitor Goroutine
+        │          │   │           ├── Timer Management
+        │          │   │           └── Batch Processing
+        │          │   │
+        │          │   ├── → sendRewardUpdates (if interval, 1min timeout)
         │          │   │   └── → SendUpdateRewardsToRelayer
         │          │   └── → redis.StoreEpochDetails
         │          │
