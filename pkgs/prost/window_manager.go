@@ -76,6 +76,9 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 			wm.GetActiveWindowCount(), epochID, dataMarketAddress)
 	}
 
+	// Create a new root context for this window's lifecycle
+	windowCtx, windowCancel := context.WithCancel(context.Background())
+
 	// Start a managed goroutine for the window creation and monitoring
 	go func() {
 		// Always release the semaphore when done
@@ -96,6 +99,7 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		wm.mu.Lock()
 		if _, exists := wm.activeWindows[key]; exists {
 			wm.mu.Unlock()
+			windowCancel() // Cancel the context since we're not using it
 			log.Warnf("⚠️ Window for epoch %s in market %s was created by another goroutine",
 				epochID, dataMarketAddress)
 			return
@@ -120,15 +124,12 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		log.Infof("🚀 Started submission window for epochID %s, data market %s, duration: %.2f seconds (active windows: %d)",
 			epochID, dataMarketAddress, windowDuration.Seconds(), activeCount)
 
-		// Start monitoring goroutine
-		monitorCtx, monitorCancel := context.WithCancel(context.Background())
-
 		// Create a channel to signal when monitoring is complete
 		monitorDone := make(chan struct{})
 
 		go func() {
 			defer close(monitorDone)
-			defer monitorCancel()
+			defer windowCancel()
 
 			log.Infof("👀 Monitoring goroutine started for epoch %s in market %s",
 				epochID, dataMarketAddress)
@@ -158,7 +159,11 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 				log.Infof("⌛ Timer expired for epoch %s in market %s", epochID, dataMarketAddress)
 
 				// Get current block number when window expires
-				currentBlock, err := Client.BlockNumber(context.Background())
+				// Create a new context with timeout for getting block number
+				blockCtx, blockCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				currentBlock, err := Client.BlockNumber(blockCtx)
+				blockCancel()
+
 				if err != nil {
 					log.Errorf("❓ Failed to get current block number for epoch %s in market %s: %v",
 						epochID, dataMarketAddress, err)
@@ -180,8 +185,8 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 				} else {
 					log.Infof("✅ Completed batch preparation for epoch %s in market %s", epochID, dataMarketAddress)
 				}
-			case <-monitorCtx.Done():
-				log.Infof("🛑 Monitor context canceled for epoch %s in market %s",
+			case <-windowCtx.Done():
+				log.Infof("🛑 Window context canceled for epoch %s in market %s",
 					epochID, dataMarketAddress)
 				return
 			case <-wm.done:
@@ -198,18 +203,18 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 		select {
 		case <-monitorDone:
 			// Monitoring completed normally
-			log.Infof("✅ Monitoring completed normally for epoch %s in market %s",
+			log.Infof("✅ Monitoring completed normally for batch preparation for epoch %s in market %s",
 				epochID, dataMarketAddress)
 		case <-time.After(safetyTimeout):
-			// Safety timeout - force cancel the monitoring goroutine
-			log.Warnf("⏱️ Safety timeout triggered for epoch %s in market %s after %v",
+			// Safety timeout - force cancel the window context
+			log.Warnf("⏱️ Safety timeout triggered for batch preparation for epoch %s in market %s after %v",
 				epochID, dataMarketAddress, safetyTimeout)
-			monitorCancel()
+			windowCancel()
 
 			// Wait a short time for cleanup
 			select {
 			case <-monitorDone:
-				log.Infof("🧹 Monitoring goroutine cleaned up after safety timeout for epoch %s in market %s",
+				log.Infof("🧹 Monitoring goroutine cleaned up after safety timeout for batch preparation for epoch %s in market %s",
 					epochID, dataMarketAddress)
 			case <-time.After(5 * time.Second):
 				log.Errorf("⚠️ Monitoring goroutine failed to clean up after safety timeout for epoch %s in market %s",

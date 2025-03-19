@@ -38,6 +38,9 @@ func StartFetchingBlocks(ctx context.Context) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
+	// Create a semaphore to limit concurrent block processing
+	blockSemaphore := make(chan struct{}, 3) // Limit to 3 concurrent blocks
+
 	initFetchCtx, initFetchCancel := context.WithTimeout(ctx, blockFetchTimeout)
 	defer initFetchCancel()
 	header, err := Client.HeaderByNumber(initFetchCtx, nil)
@@ -74,13 +77,26 @@ func StartFetchingBlocks(ctx context.Context) {
 			for blockNum := lastProcessedBlock + 1; blockNum <= currentBlockNum; blockNum++ {
 				currentNum := blockNum // Capture for closure
 
+				// Acquire semaphore with timeout
+				select {
+				case blockSemaphore <- struct{}{}:
+					// Got permission to proceed
+				case <-ctx.Done():
+					return
+				case <-time.After(5 * time.Second):
+					log.Warnf("⚠️ Timeout waiting for block semaphore for block %d", currentNum)
+					continue
+				}
+
 				// Create block processing context
 				blockCtx, blockCancel := context.WithTimeout(ctx, blockFetchTimeout)
 				defer blockCancel()
+
 				// Fetch the block
 				block, err := fetchBlock(blockCtx, big.NewInt(currentNum))
 				if err != nil {
 					log.Errorf("failed to fetch block %d: %s", currentNum, err)
+					<-blockSemaphore // Release semaphore on error
 					continue
 				}
 
@@ -99,8 +115,7 @@ func StartFetchingBlocks(ctx context.Context) {
 					if err := ProcessEvents(eventProcessCtx, block); err != nil {
 						select {
 						case errChan <- fmt.Errorf("failed to process events for block %d: %v", currentNum, err):
-						default:
-							log.Errorf("failed to process events for block %d: %v", currentNum, err)
+						case <-eventProcessCtx.Done():
 						}
 					}
 				}()
@@ -115,16 +130,18 @@ func StartFetchingBlocks(ctx context.Context) {
 						30*time.Minute); err != nil {
 						select {
 						case errChan <- fmt.Errorf("failed to store block hash for block %d: %v", currentNum, err):
-						default:
-							log.Errorf("failed to store block hash for block %d: %v", currentNum, err)
+						case <-ctx.Done():
 						}
 					}
 				}()
 
 				// Wait for all operations to complete
+				done := make(chan struct{})
 				go func() {
 					wg.Wait()
+					close(done)
 					close(errChan)
+					<-blockSemaphore // Release semaphore when done
 				}()
 
 				// Update last processed block

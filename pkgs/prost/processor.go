@@ -639,10 +639,15 @@ func sendFinalRewards(currentEpoch *big.Int) error {
 	}
 }
 
+// this batches reward updates to the relayer
 func asyncBatchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList []*big.Int, eligibleNodesCount int) {
+	// Create a semaphore to limit concurrent batches
+	batchSemaphore := make(chan struct{}, 5) // Limit to 5 concurrent batches
+	maxBatches := 10                         // Maximum number of batches to process
+
 	// Create a self-managed goroutine that doesn't block the caller
 	go func() {
-		// Create independent context
+		// Create independent context with timeout
 		batchCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 
@@ -652,7 +657,7 @@ func asyncBatchArrays(dataMarketAddress, currentDay string, slotIDs, submissions
 		errChan := make(chan error, len(slotIDs)/batchSize+1)
 
 		// Process the data in batches
-		for start := 0; start < len(slotIDs); start += batchSize {
+		for start := 0; start < len(slotIDs) && start/batchSize < maxBatches; start += batchSize {
 			end := start + batchSize
 			if end > len(slotIDs) {
 				end = len(slotIDs)
@@ -662,9 +667,24 @@ func asyncBatchArrays(dataMarketAddress, currentDay string, slotIDs, submissions
 			batchSlotIDs := slotIDs[start:end]
 			batchSubmissions := submissionsList[start:end]
 
+			// Acquire semaphore with timeout
+			select {
+			case batchSemaphore <- struct{}{}:
+				// Got permission to proceed
+			case <-batchCtx.Done():
+				log.Warnf("⚠️ Context cancelled while waiting for batch semaphore for market %s day %s",
+					dataMarketAddress, currentDay)
+				return
+			case <-time.After(30 * time.Second):
+				log.Warnf("⚠️ Timeout waiting for batch semaphore for market %s day %s",
+					dataMarketAddress, currentDay)
+				continue
+			}
+
 			wg.Add(1)
 			go func(start, end int, batchSlotIDs, batchSubmissions []*big.Int) {
 				defer wg.Done()
+				defer func() { <-batchSemaphore }() // Release semaphore when done
 
 				// Request context as child of batch context
 				reqCtx, reqCancel := context.WithTimeout(batchCtx, 30*time.Second)
@@ -674,7 +694,10 @@ func asyncBatchArrays(dataMarketAddress, currentDay string, slotIDs, submissions
 					errorMsg := fmt.Sprintf("🚨 Relayer batch error in sending rewards update batch %d-%d for data market %s on day %s: %v", start, end, dataMarketAddress, currentDay, err)
 					clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errorMsg, time.Now().String(), "High")
 					log.Error(errorMsg)
-					errChan <- err
+					select {
+					case errChan <- err:
+					case <-reqCtx.Done():
+					}
 				} else {
 					log.Infof("✅ Successfully sent rewards update batch %d-%d for data market %s on day %s",
 						start, end, dataMarketAddress, currentDay)
@@ -682,7 +705,11 @@ func asyncBatchArrays(dataMarketAddress, currentDay string, slotIDs, submissions
 			}(start, end, batchSlotIDs, batchSubmissions)
 
 			// Small delay between batch starts to prevent overwhelming the relayer
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-time.After(100 * time.Millisecond):
+			case <-batchCtx.Done():
+				return
+			}
 		}
 
 		// Wait for all batches to complete or timeout
