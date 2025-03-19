@@ -88,6 +88,9 @@ func main() {
 	wg.Add(1)
 	go prost.StartFetchingBlocks(ctx) // Pass the context
 
+	wg.Add(1)
+	go clients.StartMemoryProfiling()
+
 	// Start periodic cleanup routine
 	wg.Add(1)
 	go func() {

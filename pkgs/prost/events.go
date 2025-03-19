@@ -54,103 +54,80 @@ func ProcessEvents(ctx context.Context, block *types.Block) error {
 
 	log.Infof("Processing %d logs for block number %d", len(logs), block.Number().Int64())
 
+	// Create a semaphore to limit concurrent event processing
+	// Limit to 2 concurrent events, we are processing only EpochReleased and SnapshotBatchSubmitted events
+	eventSemaphore := make(chan struct{}, 2)
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(logs)) // Buffered channel for errors
+
+	// Create a single event processing context with timeout
+	eventCtx, eventCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer eventCancel()
 
 	for _, vLog := range logs {
 		vLog := vLog
 		wg.Add(1)
+
+		// Acquire semaphore with timeout
+		select {
+		case eventSemaphore <- struct{}{}:
+			// Got permission to proceed
+		case <-ctx.Done():
+			wg.Done()
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+			log.Warnf("⚠️ Timeout waiting for event semaphore for block %d", block.Number().Int64())
+			wg.Done()
+			continue
+		}
+
 		go func() {
 			defer wg.Done()
+			defer func() { <-eventSemaphore }() // Release semaphore when done
 
 			// Check the event signature and handle the events
 			switch vLog.Topics[0].Hex() {
 			case ContractABI.Events["EpochReleased"].ID.Hex():
-				if err := handleEpochReleasedEvent(ctx, block, vLog); err != nil {
+				if err := handleEpochReleasedEvent(eventCtx, block, vLog); err != nil {
 					select {
 					case errChan <- fmt.Errorf("epoch released event: %w", err):
-					default:
-						log.Errorf("Error channel full: %v", err)
+					case <-eventCtx.Done():
 					}
 				}
 			case ContractABI.Events["SnapshotBatchSubmitted"].ID.Hex():
-				if err := handleSnapshotBatchSubmittedEvent(ctx, block, vLog); err != nil {
+				if err := handleSnapshotBatchSubmittedEvent(eventCtx, block, vLog); err != nil {
 					select {
 					case errChan <- fmt.Errorf("snapshot batch event: %w", err):
-					default:
-						log.Errorf("Error channel full: %v", err)
+					case <-eventCtx.Done():
 					}
 				}
 			}
 		}()
 	}
 
-	// Close error channel after all goroutines complete
+	// Wait for all events to complete or context to be cancelled
+	done := make(chan struct{})
 	go func() {
 		wg.Wait()
+		close(done)
 		close(errChan)
 	}()
 
-	// Collect errors
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
-	}
+	select {
+	case <-done:
+		// Collect errors
+		var errs []error
+		for err := range errChan {
+			errs = append(errs, err)
+		}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("multiple event processing errors: %v", errs)
-	}
-
-	return nil
-}
-
-// processEpochDeadlinesForDataMarkets checks conditions and triggers batch preparation if needed
-func processEpochDeadlinesForDataMarkets(ctx context.Context, block *types.Block) error {
-	if block == nil {
-		return fmt.Errorf("received nil block")
-	}
-
-	currentBlockNum := block.Number().Int64()
-	log.Infof("🔍 Starting batch preparation check for block number: %d", currentBlockNum)
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(config.SettingsObj.DataMarketAddresses))
-
-	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
-		dataMarketAddress := dataMarketAddress
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			// Create timeout context for market processing, use batchProcessingTimeout for batch preparation for a datamarket
-			marketCtx, cancel := context.WithTimeout(ctx, batchProcessingTimeout)
-			defer cancel()
-
-			log.Infof("Processing started for data market %s at block number: %d", dataMarketAddress, currentBlockNum)
-			if err := checkAndTriggerBatchPreparation(marketCtx, dataMarketAddress, currentBlockNum); err != nil {
-				select {
-				case errChan <- fmt.Errorf("market %s: %w", dataMarketAddress, err):
-				default:
-					log.Errorf("error channel full: market %s failed: %v", dataMarketAddress, err)
-				}
-			}
-		}()
-	}
-
-	// Close error channel after all goroutines complete
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	// Collect errors
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("multiple market processing errors: %v", errs)
+		if len(errs) > 0 {
+			return fmt.Errorf("multiple event processing errors: %v", errs)
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-eventCtx.Done():
+		return fmt.Errorf("event processing timeout after 30 seconds")
 	}
 
 	return nil
@@ -186,15 +163,20 @@ func handleEpochReleasedEvent(ctx context.Context, block *types.Block, vLog type
 
 		log.Infof("⏲️ Beginning submission window for epochID %s, data market %s, duration: %f seconds", newEpochID.String(), dataMarketAddress, submissionLimitTimeDuration.Seconds())
 
-		if err := windowManager.StartSubmissionWindow(ctx, dataMarketAddress, newEpochID, submissionLimitTimeDuration, block.Number().Int64()); err != nil {
+		// Create a background context for StartSubmissionWindow since it manages its own lifecycle
+		if err := windowManager.StartSubmissionWindow(context.Background(), dataMarketAddress, newEpochID, submissionLimitTimeDuration, block.Number().Int64()); err != nil {
 			log.Errorf("Failed to start submission window: %v", err)
 			// Don't return error, continue processing other events
 		}
 
 		// Send updateRewards to relayer when current epoch is a multiple of epoch interval (config param)
 		if newEpochID.Int64()%config.SettingsObj.RewardsUpdateEpochInterval == 0 {
+			// Create a new context with timeout for reward updates
+			rewardCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			defer cancel()
+
 			// Send periodic updateRewards to relayer throughout the day
-			if err := sendRewardUpdates(ctx, dataMarketAddress, newEpochID.String()); err != nil {
+			if err := sendRewardUpdates(rewardCtx, dataMarketAddress, newEpochID.String()); err != nil {
 				errMsg := fmt.Sprintf("Failed to send reward updates for epoch %s within data market %s: %v", newEpochID.String(), dataMarketAddress, err)
 				clients.SendFailureNotification(pkgs.SendUpdateRewardsToRelayer, errMsg, time.Now().String(), "High")
 				log.Error(errMsg)
