@@ -51,6 +51,15 @@ func main() {
 	}
 	prost.ConfigureABI()
 
+	// Add migration here, before loading contract state variables
+	if config.SettingsObj.DataMarketMigration.Enabled {
+		for _, mapping := range config.SettingsObj.DataMarketMigration.Mappings {
+			if err := prost.MigrateDataMarketState(ctx, mapping.OldMarketAddress, mapping.NewMarketAddress); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+
 	// Load the state variables from the protocol state contract
 	if err := prost.LoadContractStateVariables(ctx); err != nil {
 		log.Fatal(err)

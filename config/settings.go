@@ -5,11 +5,17 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 var SettingsObj *Settings
+
+type DataMarketMigrationEntry struct {
+	OldMarketAddress common.Address
+	NewMarketAddress common.Address
+}
 
 type Settings struct {
 	ClientUrl                   string
@@ -40,9 +46,8 @@ type Settings struct {
 	BatchProcessingTimeout      int64
 	MemoryProfilingInterval     int
 	DataMarketMigration         struct {
-		Enabled          bool
-		OldMarketAddress common.Address
-		NewMarketAddress common.Address
+		Enabled  bool
+		Mappings []DataMarketMigrationEntry
 	}
 }
 
@@ -75,8 +80,7 @@ func LoadConfig() {
 
 	// Migration settings
 	migrationEnabled := getEnv("ENABLE_MARKET_MIGRATION", "false") == "true"
-	oldMarketAddr := getEnv("OLD_MARKET_ADDRESS", "")
-	newMarketAddr := getEnv("NEW_MARKET_ADDRESS", "")
+	migrationMappings := getEnv("MARKET_MIGRATION_MAPPINGS", "")
 
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
@@ -176,12 +180,27 @@ func LoadConfig() {
 	config.MemoryProfilingInterval = memoryProfilingInterval
 
 	if migrationEnabled {
-		if oldMarketAddr == "" || newMarketAddr == "" {
-			log.Fatal("Migration is enabled but addresses are not properly configured")
+		if migrationMappings == "" {
+			log.Fatal("Migration is enabled but no mappings are configured")
+		}
+
+		// Parse mappings in format "old1:new1,old2:new2,..."
+		mappings := strings.Split(migrationMappings, ",")
+		for _, mapping := range mappings {
+			addresses := strings.Split(mapping, ":")
+			if len(addresses) != 2 {
+				log.Fatalf("Invalid migration mapping format: %s", mapping)
+			}
+
+			config.DataMarketMigration.Mappings = append(
+				config.DataMarketMigration.Mappings,
+				DataMarketMigrationEntry{
+					OldMarketAddress: common.HexToAddress(addresses[0]),
+					NewMarketAddress: common.HexToAddress(addresses[1]),
+				},
+			)
 		}
 		config.DataMarketMigration.Enabled = true
-		config.DataMarketMigration.OldMarketAddress = common.HexToAddress(oldMarketAddr)
-		config.DataMarketMigration.NewMarketAddress = common.HexToAddress(newMarketAddr)
 	}
 
 	SettingsObj = &config
