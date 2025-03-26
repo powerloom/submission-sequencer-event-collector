@@ -39,6 +39,11 @@ type Settings struct {
 	EventProcessingTimeout      int64
 	BatchProcessingTimeout      int64
 	MemoryProfilingInterval     int
+	DataMarketMigration         struct {
+		Enabled          bool
+		OldMarketAddress common.Address
+		NewMarketAddress common.Address
+	}
 }
 
 func LoadConfig() {
@@ -67,6 +72,11 @@ func LoadConfig() {
 	if initCleanupEnabledErr != nil {
 		log.Fatalf("Failed to parse INIT_CLEANUP_ENABLED environment variable: %v", initCleanupEnabledErr)
 	}
+
+	// Migration settings
+	migrationEnabled := getEnv("ENABLE_MARKET_MIGRATION", "false") == "true"
+	oldMarketAddr := getEnv("OLD_MARKET_ADDRESS", "")
+	newMarketAddr := getEnv("NEW_MARKET_ADDRESS", "")
 
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
@@ -164,6 +174,15 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse MEMORY_PROFILING_INTERVAL environment variable: %v", memoryProfilingIntervalParseErr)
 	}
 	config.MemoryProfilingInterval = memoryProfilingInterval
+
+	if migrationEnabled {
+		if oldMarketAddr == "" || newMarketAddr == "" {
+			log.Fatal("Migration is enabled but addresses are not properly configured")
+		}
+		config.DataMarketMigration.Enabled = true
+		config.DataMarketMigration.OldMarketAddress = common.HexToAddress(oldMarketAddr)
+		config.DataMarketMigration.NewMarketAddress = common.HexToAddress(newMarketAddr)
+	}
 
 	SettingsObj = &config
 }
