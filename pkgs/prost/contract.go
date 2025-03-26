@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
 	pkgs "submission-sequencer-collector/pkgs"
@@ -224,4 +225,196 @@ func getSubmissionLimitTimeDuration(ctx context.Context, dataMarketAddress strin
 	}
 
 	return time.Duration(submissionLimit.Int64()) * time.Second, nil
+}
+
+type MigrationReport struct {
+	ProtocolParams map[string]struct {
+		OldValue string
+		NewValue string
+	}
+	Sets map[string]struct {
+		OldMembers []string
+		NewMembers []string
+	}
+	KeyValues map[string]struct {
+		OldValue string
+		NewValue string
+	}
+}
+
+// MigrateDataMarketState handles the migration of Redis state from old to new data market address
+func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address) error {
+	log.Infof("Starting data market migration from %s to %s", oldAddr.Hex(), newAddr.Hex())
+
+	report := &MigrationReport{
+		ProtocolParams: make(map[string]struct{ OldValue, NewValue string }),
+		Sets:           make(map[string]struct{ OldMembers, NewMembers []string }),
+		KeyValues:      make(map[string]struct{ OldValue, NewValue string }),
+	}
+
+	// Protocol parameters in hash tables
+	protocolParams := []string{
+		redis.GetSubmissionLimitTableKey(),
+		redis.GetDaySizeTableKey(),
+		redis.GetDailySnapshotQuotaTableKey(),
+	}
+
+	for _, key := range protocolParams {
+		value, err := redis.RedisClient.HGet(ctx, key, oldAddr.Hex()).Result()
+		if err == nil {
+			err = redis.RedisClient.HSet(ctx, key, newAddr.Hex(), value).Err()
+			if err != nil {
+				log.Errorf("Failed to migrate hash entry %s: %v", key, err)
+			}
+			newValue, _ := redis.RedisClient.HGet(ctx, key, newAddr.Hex()).Result()
+			report.ProtocolParams[key] = struct{ OldValue, NewValue string }{value, newValue}
+		}
+	}
+
+	// Track set migrations
+	trackSetMigration := func(oldSetKey, newSetKey string) error {
+		oldMembers, err := redis.RedisClient.SMembers(ctx, oldSetKey).Result()
+		if err == nil && len(oldMembers) > 0 {
+			err = redis.RedisClient.SAdd(ctx, newSetKey, oldMembers).Err()
+			if err != nil {
+				return err
+			}
+			newMembers, _ := redis.RedisClient.SMembers(ctx, newSetKey).Result()
+			report.Sets[newSetKey] = struct{ OldMembers, NewMembers []string }{oldMembers, newMembers}
+		}
+		return nil
+	}
+
+	// Track key-value migrations
+	trackKeyMigration := func(oldKey, newKey string) error {
+		oldValue, err := redis.RedisClient.Get(ctx, oldKey).Result()
+		if err == nil {
+			err = redis.RedisClient.Set(ctx, newKey, oldValue, 0).Err()
+			if err != nil {
+				return err
+			}
+			newValue, _ := redis.RedisClient.Get(ctx, newKey).Result()
+			report.KeyValues[newKey] = struct{ OldValue, NewValue string }{oldValue, newValue}
+		}
+		return nil
+	}
+
+	// Migrate sets with tracking
+	if err := trackSetMigration(
+		redis.EpochMarkerSet(oldAddr.Hex()),
+		redis.EpochMarkerSet(newAddr.Hex()),
+	); err != nil {
+		log.Error(err)
+	}
+
+	if err := trackSetMigration(
+		redis.DayRolloverEpochMarkerSet(oldAddr.Hex()),
+		redis.DayRolloverEpochMarkerSet(newAddr.Hex()),
+	); err != nil {
+		log.Error(err)
+	}
+
+	// Track day-based migrations
+	currentDay, _ := redis.Get(ctx, redis.GetCurrentDayKey(oldAddr.Hex()))
+	lastKnownDay, _ := redis.Get(ctx, redis.LastKnownDay(oldAddr.Hex()))
+
+	if err := trackKeyMigration(
+		redis.GetCurrentDayKey(oldAddr.Hex()),
+		redis.GetCurrentDayKey(newAddr.Hex()),
+	); err != nil {
+		log.Error(err)
+	}
+
+	if err := trackKeyMigration(
+		redis.LastKnownDay(oldAddr.Hex()),
+		redis.LastKnownDay(newAddr.Hex()),
+	); err != nil {
+		log.Error(err)
+	}
+
+	// Process day-based data
+	currentDayInt, _ := strconv.Atoi(currentDay)
+	lastKnownDayInt, _ := strconv.Atoi(lastKnownDay)
+
+	for day := lastKnownDayInt; day <= currentDayInt; day++ {
+		dayStr := strconv.Itoa(day)
+		if err := trackSetMigration(
+			redis.EligibleNodesByDayKey(oldAddr.Hex(), dayStr),
+			redis.EligibleNodesByDayKey(newAddr.Hex(), dayStr),
+		); err != nil {
+			log.Error(err)
+		}
+	}
+
+	// Print migration report
+	log.Info("📊 Data Market Migration Report")
+	log.Info("Protocol Parameters:")
+	for key, values := range report.ProtocolParams {
+		log.Infof("  %s:", key)
+		log.Infof("    Value: %s", values.OldValue)
+		if values.OldValue != values.NewValue {
+			log.Warnf("    ⚠️ Migration failed - New value %s doesn't match", values.NewValue)
+		}
+	}
+
+	log.Info("Sets:")
+	for key, members := range report.Sets {
+		oldCount := len(members.OldMembers)
+		newCount := len(members.NewMembers)
+		log.Infof("  %s: Old members: %d, New members: %d", key, oldCount, newCount)
+		if oldCount != newCount {
+			log.Warnf("    ⚠️ Mismatch in set %s", key)
+			diff := stringSliceDiff(members.OldMembers, members.NewMembers)
+			if len(diff) > 0 {
+				log.Warnf("    Missing members: %v", diff)
+			}
+		}
+	}
+
+	log.Info("Key-Value Pairs:")
+	for key, values := range report.KeyValues {
+		log.Infof("  %s:", key)
+		log.Infof("    Old: %s", values.OldValue)
+		log.Infof("    New: %s", values.NewValue)
+		if values.OldValue != values.NewValue {
+			log.Warnf("    ⚠️ Values don't match for key %s", key)
+		}
+	}
+
+	return nil
+}
+
+// Helper function to find differences between string slices
+func stringSliceDiff(a, b []string) []string {
+	mb := make(map[string]struct{}, len(b))
+	for _, x := range b {
+		mb[x] = struct{}{}
+	}
+	var diff []string
+	for _, x := range a {
+		if _, found := mb[x]; !found {
+			diff = append(diff, x)
+		}
+	}
+	return diff
+}
+
+func HandleDataMarketMigration(ctx context.Context) error {
+	if !config.SettingsObj.DataMarketMigration.Enabled {
+		return nil
+	}
+
+	log.Info("Starting data market migrations...")
+
+	for _, mapping := range config.SettingsObj.DataMarketMigration.Mappings {
+		if err := MigrateDataMarketState(ctx, mapping.OldMarketAddress, mapping.NewMarketAddress); err != nil {
+			log.Errorf("Failed to migrate data market %s to %s: %v",
+				mapping.OldMarketAddress.Hex(),
+				mapping.NewMarketAddress.Hex(),
+				err)
+		}
+	}
+
+	log.Info("Data market migrations completed")
+	return nil
 }
