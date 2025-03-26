@@ -26,6 +26,8 @@ func main() {
 	// Initialize timeouts
 	prost.InitializeTimeouts()
 
+	// Initialize submission window processor
+	prost.InitializeSubmissionWindowProcessor()
 	// Initialize reporting service
 	clients.InitializeReportingClient(config.SettingsObj.SlackReportingUrl, 5*time.Second)
 
@@ -48,6 +50,15 @@ func main() {
 		log.Fatal(err)
 	}
 	prost.ConfigureABI()
+
+	// Add migration here, before loading contract state variables
+	if config.SettingsObj.DataMarketMigration.Enabled {
+		for _, mapping := range config.SettingsObj.DataMarketMigration.Mappings {
+			if err := prost.MigrateDataMarketState(ctx, mapping.OldMarketAddress, mapping.NewMarketAddress); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 
 	// Load the state variables from the protocol state contract
 	if err := prost.LoadContractStateVariables(ctx); err != nil {
@@ -85,6 +96,9 @@ func main() {
 
 	wg.Add(1)
 	go prost.StartFetchingBlocks(ctx) // Pass the context
+
+	wg.Add(1)
+	go clients.StartMemoryProfiling()
 
 	// Start periodic cleanup routine
 	wg.Add(1)

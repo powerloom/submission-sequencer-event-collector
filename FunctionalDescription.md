@@ -19,14 +19,45 @@ The Submission Sequencer Event Collector is responsible for monitoring blockchai
 ```mermaid
 graph TD
     A[Block Fetcher] -->|500ms interval| B[Event Processor]
-    A -->|parallel| C[Batch Preparer]
-    B -->|events| D[Epoch Handler]
-    B -->|events| E[Snapshot Handler]
-    C -->|market data| F[Market Processor]
-    F -->|epoch data| G[Batch Processor]
+    B -->|concurrent, max 2| C[Event Handler]
+    C -->|independent ctx| D[Window Manager]
+    D -->|max 100 windows| E[Window Monitor]
+    E -->|window duration| F[Batch Processor]
+    
+    subgraph "Concurrency Controls"
+        BS[Block Semaphore<br/>max 3] -.->|limits| A
+        ES[Event Semaphore<br/>max 2] -.->|limits| C
+        WS[Window Semaphore<br/>max 100] -.->|limits| D
+    end
 ```
 
-### 2.2 Timeout Hierarchy
+### 2.2 Resource Management
+
+```go
+// Concurrency limits
+const (
+    maxConcurrentBlocks = 3
+    maxConcurrentEvents = 2
+    maxActiveWindows = 100
+)
+
+// Context hierarchy
+type ContextLevel struct {
+    BlockProcessing    context.Context  // Parent context from main
+    EventProcessing    context.Context  // Independent from Background()
+    WindowManagement   context.Context  // Independent per window
+    BatchProcessing    context.Context  // Child of window context
+}
+
+// Semaphore controls
+type ConcurrencyControl struct {
+    blockSemaphore    chan struct{}  // Limits concurrent block processing
+    eventSemaphore    chan struct{}  // Limits concurrent event handling
+    windowSemaphore   chan struct{}  // Limits active submission windows
+}
+```
+
+### 2.3 Timeout Hierarchy
 
 ```go
 const (
@@ -36,12 +67,35 @@ const (
     // Processing timeouts
     eventProcessingTimeout = 30 * time.Second
     batchProcessingTimeout = 30 * time.Second
+    blockFetchTimeout = 5 * time.Second
     
     // Market-level timeouts
     marketProcessingTimeout = 120 * time.Second
     batchPreparationTimeout = 90 * time.Second
 )
 ```
+
+### 2.4 Component Responsibilities
+
+#### Block Fetcher
+- Monitors blockchain for new blocks
+- Manages concurrent block processing (max 3)
+- Coordinates event processing initiation
+
+#### Event Processor
+- Processes blockchain events concurrently (max 2)
+- Manages independent event processing contexts
+- Handles event filtering and distribution
+
+#### Window Manager
+- Controls submission window lifecycle
+- Manages window concurrency (max 100)
+- Handles window cleanup and monitoring
+
+#### Batch Processor
+- Processes batches within window context
+- Manages batch preparation and submission
+- Handles batch-related error propagation
 
 ## 3. Core Processing Flows
 
@@ -52,14 +106,16 @@ StartFetchingBlocks(ctx)
 └── For each tick:
     ├── → Client.HeaderByNumber(fetchCtx) [latest block]
     └── For each block:
+        ├── blockSemaphore := make(chan struct{}, 3)
         ├── → fetchBlock(blockCtx)
         │   └── → Client.BlockByNumber with retry
         │
         ├── errChan := make(chan error, 3)
         ├── var wg sync.WaitGroup
         │
-        ├── ⟿ ProcessEvents(eventProcessCtx)
+        ├── ⟿ ProcessEvents(independent eventCtx)
         │   ├── → Client.FilterLogs with retry
+        │   ├── eventSemaphore := make(chan struct{}, 2)
         │   ├── errChan := make(chan error, len(logs))
         │   ├── var wg sync.WaitGroup
         │   └── For each log:
@@ -67,7 +123,14 @@ StartFetchingBlocks(ctx)
         │          ├── → handleEpochReleasedEvent
         │          │   ├── → Instance.ParseEpochReleased
         │          │   ├── → calculateSubmissionLimitBlock
-        │          │   ├── → sendRewardUpdates (if interval)
+        │          │   ├── → StartSubmissionWindow(independent context)
+        │          │   │   └── ⟿ Window Management
+        │          │   │       ├── windowSemaphore := make(chan struct{}, maxWindows)
+        │          │   │       └── Monitor Goroutine
+        │          │   │           ├── Timer Management
+        │          │   │           └── Batch Processing
+        │          │   │
+        │          │   ├── → sendRewardUpdates (if interval, 1min timeout)
         │          │   │   └── → SendUpdateRewardsToRelayer
         │          │   └── → redis.StoreEpochDetails
         │          │
@@ -166,86 +229,185 @@ StartFetchingBlocks(unlimited ctx)
 
 ### 4.1 Context Management
 
-- Hierarchical context flow with defined timeouts
-- Proper cancellation propagation
-- Resource cleanup on context termination
-- Structured error handling with error groups
+- Independent context hierarchies for major components
+  - Block processing: Parent context from main application
+  - Event processing: Independent context from Background()
+  - Window management: Independent context per window
+  - Batch processing: Child context of window context
 
-### 4.2 Redis Operations
+- Context cancellation patterns
+  - Proper cleanup on context cancellation
+  - Timeout management with defer patterns
+  - Resource release guarantees
+  - Error propagation through channels
 
-- Connection pooling for optimal resource usage
-- 5-second timeout for all operations
-- Exponential backoff for retries
-- Automatic connection cleanup
+### 4.2 Concurrency Control
+
+- Semaphore-based limits
+  ```go
+  // Block processing
+  blockSemaphore := make(chan struct{}, 3)
+  
+  // Event processing
+  eventSemaphore := make(chan struct{}, 2)
+  
+  // Window management
+  windowSemaphore := make(chan struct{}, maxWindows)
+  ```
+
+- Acquisition patterns
+  ```go
+  // With timeout
+  select {
+  case sem <- struct{}{}:
+      // Got permission
+  case <-time.After(timeout):
+      // Handle timeout
+  case <-ctx.Done():
+      // Handle cancellation
+  }
+  
+  // Guaranteed release
+  defer func() { <-sem }()
+  ```
 
 ### 4.3 Error Handling
 
-```go
-func processMarketData(ctx context.Context, dataMarketAddress string) (err error) {
-    defer func() {
-        if r := recover(); r != nil {
-            buf := make([]byte, 64<<10)
-            n := runtime.Stack(buf, false)
-            err = fmt.Errorf("panic in market processing: %v\n%s", r, buf[:n])
-            log.WithError(err).Error("Recovered from panic in market processing")
-            metrics.IncPanics("market_processing")
-        }
-    }()
-    // Processing logic
-}
-```
+- Context-aware error channels
+  ```go
+  select {
+  case errChan <- err:
+      // Error sent
+  case <-ctx.Done():
+      // Context cancelled
+  }
+  ```
+
+- Error collection patterns
+  ```go
+  // Wait with timeout
+  select {
+  case <-done:
+      for err := range errChan {
+          errs = append(errs, err)
+      }
+  case <-ctx.Done():
+      return ctx.Err()
+  }
+  ```
+
+### 4.4 Resource Cleanup
+
+- Deferred cleanup
+  ```go
+  defer func() {
+      window.Timer.Stop()
+      close(window.Done)
+      wm.removeWindow(dataMarketAddress, epochID)
+  }()
+  ```
+
+- Safety timeouts
+  ```go
+  safetyTimeout := windowDuration + 5*time.Minute
+  select {
+  case <-monitorDone:
+      // Normal completion
+  case <-time.After(safetyTimeout):
+      // Force cleanup
+  }
+  ```
 
 ## 5. Monitoring and Observability
 
-### 5.1 Metrics
+### 5.1 Memory Profiling
 
-- Operation latencies
-- Error counts by category
-- Panic occurrences
-- Processing throughput
-- Redis operation latencies
+- Periodic memory stats (every 2 minutes)
+  - Alloc: Current heap allocation
+  - TotalAlloc: Cumulative allocation
+  - Sys: Total memory obtained from OS
+  - NumGC: Number of completed GC cycles
+
+- Goroutine monitoring
+  - Current count tracking
+  - Pattern analysis (oscillation between 9-21)
+  - Correlation with system events
 
 ### 5.2 Logging
 
 - Structured logging with context
-- Error details with stack traces
-- Processing milestone markers
-- Timeout and cancellation events
+  ```go
+  log.WithFields(log.Fields{
+      "component": "window_manager",
+      "epoch_id": epochID,
+      "market": dataMarketAddress,
+  }).Info("message")
+  ```
+
+- Event tracking
+  - Window lifecycle events
+  - Resource acquisition/release
+  - Error conditions
+  - Cleanup operations
+
+### 5.3 Metrics
+
+- System health
+  - Goroutine count
+  - Memory usage
+  - GC frequency
+
+- Business metrics
+  - Active windows
+  - Processing throughput
+  - Error rates
 
 ## 6. Configuration
 
-### 6.1 Environment Variables
+### 6.1 Concurrency Settings
 
-- Redis connection details
-- Blockchain node URL
-- Processing intervals
-- Timeout durations
-- Market addresses
+```go
+type Config struct {
+    MaxConcurrentBlocks    int           `env:"MAX_CONCURRENT_BLOCKS" default:"3"`
+    MaxConcurrentEvents    int           `env:"MAX_CONCURRENT_EVENTS" default:"2"`
+    MaxActiveWindows       int           `env:"MAX_ACTIVE_WINDOWS" default:"100"`
+    BlockFetchInterval     time.Duration `env:"BLOCK_FETCH_INTERVAL" default:"500ms"`
+}
+```
 
-### 6.2 Runtime Parameters
+### 6.2 Timeouts
 
-- Batch sizes
-- Retry policies
-- Connection pool sizes
-- Logging levels
+```go
+type TimeoutConfig struct {
+    BlockFetch       time.Duration `env:"BLOCK_FETCH_TIMEOUT" default:"5s"`
+    EventProcessing  time.Duration `env:"EVENT_PROCESSING_TIMEOUT" default:"30s"`
+    BatchProcessing  time.Duration `env:"BATCH_PROCESSING_TIMEOUT" default:"30s"`
+    RedisOperation   time.Duration `env:"REDIS_OPERATION_TIMEOUT" default:"5s"`
+}
+```
 
 ## 7. Recovery and Resilience
 
 ### 7.1 Panic Recovery
-- Stack trace capture
-- Error categorization
-- Metric incrementation
-- Logging with context
 
-### 7.2 Error Categories
-1. Context cancellation (expected)
-2. Timeouts (expected but monitored)
-3. Redis operations (retried)
-4. Processing errors (logged)
-5. Panics (recovered and logged)
+- Component-level recovery
+  ```go
+  defer func() {
+      if r := recover(); r != nil {
+          log.Errorf("💥 Panic in component: %v", r)
+      }
+  }()
+  ```
 
-### 7.3 Retry Strategies
-- Redis operations: Exponential backoff
-- Block fetching: Immediate retry with backoff
-- Batch processing: Configurable retries
+### 7.2 Resource Protection
+
+- Semaphore guarantees
+- Context cancellation
+- Cleanup operations
+
+### 7.3 Monitoring Thresholds
+
+- Memory usage alerts
+- Goroutine count warnings
+- Error rate monitoring
 

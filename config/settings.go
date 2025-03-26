@@ -5,11 +5,17 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 var SettingsObj *Settings
+
+type DataMarketMigrationEntry struct {
+	OldMarketAddress common.Address
+	NewMarketAddress common.Address
+}
 
 type Settings struct {
 	ClientUrl                   string
@@ -34,11 +40,15 @@ type Settings struct {
 	RewardsUpdateEpochInterval  int64
 	AttestorQueuePushEnabled    bool
 	InitCleanupEnabled          bool
-	RedisOperationTimeout       int64
+	ContractQueryTimeout        int64
 	BlockFetchTimeout           int64
 	EventProcessingTimeout      int64
 	BatchProcessingTimeout      int64
-	MarketProcessingTimeout     int64
+	MemoryProfilingInterval     int
+	DataMarketMigration         struct {
+		Enabled  bool
+		Mappings []DataMarketMigrationEntry
+	}
 }
 
 func LoadConfig() {
@@ -67,6 +77,10 @@ func LoadConfig() {
 	if initCleanupEnabledErr != nil {
 		log.Fatalf("Failed to parse INIT_CLEANUP_ENABLED environment variable: %v", initCleanupEnabledErr)
 	}
+
+	// Migration settings
+	migrationEnabled := getEnv("ENABLE_MARKET_MIGRATION", "false") == "true"
+	migrationMappings := getEnv("MARKET_MIGRATION_MAPPINGS", "")
 
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
@@ -135,11 +149,11 @@ func LoadConfig() {
 	}
 	config.RetryLimits = retryLimits
 
-	redisOperationTimeout, redisTimeoutErr := strconv.ParseInt(getEnv("REDIS_OPERATION_TIMEOUT", ""), 10, 64)
-	if redisTimeoutErr != nil {
-		log.Fatalf("Failed to parse REDIS_OPERATION_TIMEOUT environment variable: %v", redisTimeoutErr)
+	contractQueryTimeout, contractQueryTimeoutParseErr := strconv.ParseInt(getEnv("CONTRACT_QUERY_TIMEOUT", ""), 10, 64)
+	if contractQueryTimeoutParseErr != nil {
+		log.Fatalf("Failed to parse CONTRACT_QUERY_TIMEOUT environment variable: %v", contractQueryTimeoutParseErr)
 	}
-	config.RedisOperationTimeout = redisOperationTimeout
+	config.ContractQueryTimeout = contractQueryTimeout
 
 	blockFetchTimeout, blockFetchTimeoutErr := strconv.ParseInt(getEnv("BLOCK_FETCH_TIMEOUT", ""), 10, 64)
 	if blockFetchTimeoutErr != nil {
@@ -159,11 +173,35 @@ func LoadConfig() {
 	}
 	config.BatchProcessingTimeout = batchProcessingTimeout
 
-	marketProcessingTimeout, marketTimeoutErr := strconv.ParseInt(getEnv("MARKET_PROCESSING_TIMEOUT", ""), 10, 64)
-	if marketTimeoutErr != nil {
-		log.Fatalf("Failed to parse MARKET_PROCESSING_TIMEOUT environment variable: %v", marketTimeoutErr)
+	memoryProfilingInterval, memoryProfilingIntervalParseErr := strconv.Atoi(getEnv("MEMORY_PROFILING_INTERVAL", "15"))
+	if memoryProfilingIntervalParseErr != nil {
+		log.Fatalf("Failed to parse MEMORY_PROFILING_INTERVAL environment variable: %v", memoryProfilingIntervalParseErr)
 	}
-	config.MarketProcessingTimeout = marketProcessingTimeout
+	config.MemoryProfilingInterval = memoryProfilingInterval
+
+	if migrationEnabled {
+		if migrationMappings == "" {
+			log.Fatal("Migration is enabled but no mappings are configured")
+		}
+
+		// Parse mappings in format "old1:new1,old2:new2,..."
+		mappings := strings.Split(migrationMappings, ",")
+		for _, mapping := range mappings {
+			addresses := strings.Split(mapping, ":")
+			if len(addresses) != 2 {
+				log.Fatalf("Invalid migration mapping format: %s", mapping)
+			}
+
+			config.DataMarketMigration.Mappings = append(
+				config.DataMarketMigration.Mappings,
+				DataMarketMigrationEntry{
+					OldMarketAddress: common.HexToAddress(addresses[0]),
+					NewMarketAddress: common.HexToAddress(addresses[1]),
+				},
+			)
+		}
+		config.DataMarketMigration.Enabled = true
+	}
 
 	SettingsObj = &config
 }
