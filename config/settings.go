@@ -5,11 +5,17 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 var SettingsObj *Settings
+
+type DataMarketMigrationEntry struct {
+	OldMarketAddress common.Address
+	NewMarketAddress common.Address
+}
 
 type Settings struct {
 	ClientUrl                   string
@@ -39,6 +45,10 @@ type Settings struct {
 	EventProcessingTimeout      int64
 	BatchProcessingTimeout      int64
 	MemoryProfilingInterval     int
+	DataMarketMigration         struct {
+		Enabled  bool
+		Mappings []DataMarketMigrationEntry
+	}
 }
 
 func LoadConfig() {
@@ -67,6 +77,10 @@ func LoadConfig() {
 	if initCleanupEnabledErr != nil {
 		log.Fatalf("Failed to parse INIT_CLEANUP_ENABLED environment variable: %v", initCleanupEnabledErr)
 	}
+
+	// Migration settings
+	migrationEnabled := getEnv("ENABLE_MARKET_MIGRATION", "false") == "true"
+	migrationMappings := getEnv("MARKET_MIGRATION_MAPPINGS", "")
 
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
@@ -164,6 +178,30 @@ func LoadConfig() {
 		log.Fatalf("Failed to parse MEMORY_PROFILING_INTERVAL environment variable: %v", memoryProfilingIntervalParseErr)
 	}
 	config.MemoryProfilingInterval = memoryProfilingInterval
+
+	if migrationEnabled {
+		if migrationMappings == "" {
+			log.Fatal("Migration is enabled but no mappings are configured")
+		}
+
+		// Parse mappings in format "old1:new1,old2:new2,..."
+		mappings := strings.Split(migrationMappings, ",")
+		for _, mapping := range mappings {
+			addresses := strings.Split(mapping, ":")
+			if len(addresses) != 2 {
+				log.Fatalf("Invalid migration mapping format: %s", mapping)
+			}
+
+			config.DataMarketMigration.Mappings = append(
+				config.DataMarketMigration.Mappings,
+				DataMarketMigrationEntry{
+					OldMarketAddress: common.HexToAddress(addresses[0]),
+					NewMarketAddress: common.HexToAddress(addresses[1]),
+				},
+			)
+		}
+		config.DataMarketMigration.Enabled = true
+	}
 
 	SettingsObj = &config
 }
