@@ -228,9 +228,9 @@ func getSubmissionLimitTimeDuration(ctx context.Context, dataMarketAddress strin
 }
 
 type MigrationReport struct {
-	HashTables map[string]struct {
-		OldCount int64
-		NewCount int64
+	ProtocolParams map[string]struct {
+		OldValue string
+		NewValue string
 	}
 	Sets map[string]struct {
 		OldMembers []string
@@ -247,29 +247,28 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 	log.Infof("Starting data market migration from %s to %s", oldAddr.Hex(), newAddr.Hex())
 
 	report := &MigrationReport{
-		HashTables: make(map[string]struct{ OldCount, NewCount int64 }),
-		Sets:       make(map[string]struct{ OldMembers, NewMembers []string }),
-		KeyValues:  make(map[string]struct{ OldValue, NewValue string }),
+		ProtocolParams: make(map[string]struct{ OldValue, NewValue string }),
+		Sets:           make(map[string]struct{ OldMembers, NewMembers []string }),
+		KeyValues:      make(map[string]struct{ OldValue, NewValue string }),
 	}
 
-	// Core protocol parameters stored in hash tables
-	hashKeys := []string{
+	// Protocol parameters in hash tables
+	protocolParams := []string{
 		redis.GetSubmissionLimitTableKey(),
 		redis.GetDaySizeTableKey(),
 		redis.GetDailySnapshotQuotaTableKey(),
 	}
 
-	for _, key := range hashKeys {
-		oldCount, _ := redis.RedisClient.HLen(ctx, key).Result()
+	for _, key := range protocolParams {
 		value, err := redis.RedisClient.HGet(ctx, key, oldAddr.Hex()).Result()
 		if err == nil {
 			err = redis.RedisClient.HSet(ctx, key, newAddr.Hex(), value).Err()
 			if err != nil {
 				log.Errorf("Failed to migrate hash entry %s: %v", key, err)
 			}
+			newValue, _ := redis.RedisClient.HGet(ctx, key, newAddr.Hex()).Result()
+			report.ProtocolParams[key] = struct{ OldValue, NewValue string }{value, newValue}
 		}
-		newCount, _ := redis.RedisClient.HLen(ctx, key).Result()
-		report.HashTables[key] = struct{ OldCount, NewCount int64 }{oldCount, newCount}
 	}
 
 	// Track set migrations
@@ -347,11 +346,15 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 		}
 	}
 
-	// Print migration report at the end
+	// Print migration report
 	log.Info("📊 Data Market Migration Report")
-	log.Info("Hash Tables:")
-	for key, counts := range report.HashTables {
-		log.Infof("  %s: Old count: %d, New count: %d", key, counts.OldCount, counts.NewCount)
+	log.Info("Protocol Parameters:")
+	for key, values := range report.ProtocolParams {
+		log.Infof("  %s:", key)
+		log.Infof("    Value: %s", values.OldValue)
+		if values.OldValue != values.NewValue {
+			log.Warnf("    ⚠️ Migration failed - New value %s doesn't match", values.NewValue)
+		}
 	}
 
 	log.Info("Sets:")
