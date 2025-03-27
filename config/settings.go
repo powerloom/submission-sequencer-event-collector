@@ -46,8 +46,9 @@ type Settings struct {
 	BatchProcessingTimeout      int64
 	MemoryProfilingInterval     int
 	DataMarketMigration         struct {
-		Enabled  bool
-		Mappings []DataMarketMigrationEntry
+		Enabled       bool
+		Mappings      []DataMarketMigrationEntry
+		DaysToMigrate int
 	}
 }
 
@@ -81,6 +82,15 @@ func LoadConfig() {
 	// Migration settings
 	migrationEnabled := getEnv("ENABLE_MARKET_MIGRATION", "false") == "true"
 	migrationMappings := getEnv("MARKET_MIGRATION_MAPPINGS", "")
+	daysToMigrate, daysToMigrateErr := strconv.Atoi(getEnv("MARKET_MIGRATION_DAYS", "1"))
+	if daysToMigrateErr != nil {
+		log.Printf("Invalid MARKET_MIGRATION_DAYS value, using default of 1: %v", daysToMigrateErr)
+		daysToMigrate = 1
+	}
+	if daysToMigrate < 1 {
+		log.Printf("MARKET_MIGRATION_DAYS must be at least 1, using default of 1")
+		daysToMigrate = 1
+	}
 
 	config := Settings{
 		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
@@ -201,6 +211,7 @@ func LoadConfig() {
 			)
 		}
 		config.DataMarketMigration.Enabled = true
+		config.DataMarketMigration.DaysToMigrate = daysToMigrate
 	}
 
 	SettingsObj = &config
