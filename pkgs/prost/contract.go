@@ -347,11 +347,7 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 	currentDayInt, _ := strconv.Atoi(currentDay)
 
 	// Calculate the starting day based on configuration
-
-	startDay := currentDayInt - (config.SettingsObj.DataMarketMigration.DaysToMigrate - 1)
-	if startDay < 1 {
-		startDay = 1
-	}
+	startDay := max(1, currentDayInt-(config.SettingsObj.DataMarketMigration.DaysToMigrate-1))
 	log.Infof("Migrating slot data for days %d to %d", startDay, currentDayInt)
 
 	for day := currentDayInt; day >= startDay; day-- {
