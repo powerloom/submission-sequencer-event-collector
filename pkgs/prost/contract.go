@@ -369,8 +369,15 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 	eligibleSlotStats := make(map[string]*SlotMigrationStats)
 	submissionStats := make(map[string]*SlotMigrationStats)
 
+	// Calculate the starting day (last 10 days)
+	startDay := currentDayInt - 9
+	if startDay < 1 {
+		startDay = 1
+	}
+	log.Infof("Migrating slot data for days %d to %d", startDay, currentDayInt)
+
 	// copy over eligible slot submissions by day by slot ID
-	for day := currentDayInt; day >= 1; day-- {
+	for day := currentDayInt; day >= startDay; day-- {
 		dayStr := strconv.Itoa(day)
 		stats := &SlotMigrationStats{TotalSlots: totalNodesCount}
 		eligibleSlotStats[dayStr] = stats
@@ -389,7 +396,7 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 	}
 
 	// copy over total submissions by day by slot ID
-	for day := currentDayInt; day >= 1; day-- {
+	for day := currentDayInt; day >= startDay; day-- {
 		dayStr := strconv.Itoa(day)
 		stats := &SlotMigrationStats{TotalSlots: totalNodesCount}
 		submissionStats[dayStr] = stats
