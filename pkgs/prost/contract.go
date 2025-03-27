@@ -369,8 +369,9 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 	eligibleSlotStats := make(map[string]*SlotMigrationStats)
 	submissionStats := make(map[string]*SlotMigrationStats)
 
-	// Calculate the starting day (last 10 days)
-	startDay := currentDayInt - 9
+	// Calculate the starting day based on configuration
+
+	startDay := currentDayInt - (config.SettingsObj.DataMarketMigration.DaysToMigrate - 1)
 	if startDay < 1 {
 		startDay = 1
 	}
