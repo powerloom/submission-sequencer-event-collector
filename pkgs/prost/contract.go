@@ -302,8 +302,11 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 			if err != nil {
 				return err
 			}
+			// Only store mismatched values in the report
 			newValue, _ := redis.RedisClient.Get(ctx, newKey).Result()
-			report.KeyValues[newKey] = struct{ OldValue, NewValue string }{oldValue, newValue}
+			if oldValue != newValue {
+				report.KeyValues[newKey] = struct{ OldValue, NewValue string }{oldValue, newValue}
+			}
 		}
 		return nil
 	}
@@ -471,14 +474,16 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 		}
 	}
 
-	log.Info("Key-Value Pairs:")
-	for key, values := range report.KeyValues {
-		log.Infof("  %s:", key)
-		log.Infof("    Old: %s", values.OldValue)
-		log.Infof("    New: %s", values.NewValue)
-		if values.OldValue != values.NewValue {
-			log.Warnf("    ⚠️ Values don't match for key %s", key)
+	// Modify the Key-Value Pairs section of the report to only show mismatches
+	if len(report.KeyValues) > 0 {
+		log.Info("Key-Value Pair Mismatches:")
+		for key, values := range report.KeyValues {
+			log.Warnf("  ⚠️ Mismatch in %s:", key)
+			log.Warnf("    Old: %s", values.OldValue)
+			log.Warnf("    New: %s", values.NewValue)
 		}
+	} else {
+		log.Info("All key-value pairs migrated successfully")
 	}
 
 	return nil
