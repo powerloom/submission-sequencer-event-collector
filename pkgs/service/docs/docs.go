@@ -434,7 +434,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/service.Response-string"
+                            "$ref": "#/definitions/service.Response-service_SubmissionInfo"
                         }
                     },
                     "400": {
@@ -486,7 +486,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/service.Response-string"
+                            "$ref": "#/definitions/service.Response-service_SubmissionInfo"
                         }
                     },
                     "400": {
@@ -503,6 +503,58 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error: Failed to fetch last snapshot submission",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/snapshotterNodeVersion": {
+            "post": {
+                "description": "Retrieves the version of a snapshotter node for a given data market address, snapshotter address and slotID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Submissions"
+                ],
+                "summary": "Get snapshotter node version",
+                "parameters": [
+                    {
+                        "description": "Snapshotter node version request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.SnapshotterNodeVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.Response-string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Incorrect token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error: Failed to fetch snapshotter node version",
                         "schema": {
                             "type": "string"
                         }
@@ -904,6 +956,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.InfoType-service_SubmissionInfo": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "$ref": "#/definitions/service.SubmissionInfo"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "service.InfoType-string": {
             "type": "object",
             "properties": {
@@ -1034,6 +1097,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.Response-service_SubmissionInfo": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "$ref": "#/definitions/service.InfoType-service_SubmissionInfo"
+                },
+                "requestID": {
+                    "type": "string"
+                }
+            }
+        },
         "service.Response-string": {
             "type": "object",
             "properties": {
@@ -1073,6 +1147,23 @@ const docTemplate = `{
                 }
             }
         },
+        "service.SnapshotterNodeVersionRequest": {
+            "type": "object",
+            "properties": {
+                "dataMarketAddress": {
+                    "type": "string"
+                },
+                "slotID": {
+                    "type": "integer"
+                },
+                "snapshotterAddress": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "service.SubmissionDetails": {
             "type": "object",
             "properties": {
@@ -1080,6 +1171,17 @@ const docTemplate = `{
                     "$ref": "#/definitions/service.SnapshotSubmissionSwagger"
                 },
                 "submissionID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.SubmissionInfo": {
+            "type": "object",
+            "properties": {
+                "nodeVersion": {
+                    "type": "string"
+                },
+                "timestamp": {
                     "type": "string"
                 }
             }
