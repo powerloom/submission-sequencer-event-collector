@@ -227,6 +227,12 @@ func getSubmissionLimitTimeDuration(ctx context.Context, dataMarketAddress strin
 	return time.Duration(submissionLimit.Int64()) * time.Second, nil
 }
 
+type SlotMigrationStats struct {
+	TotalSlots      int
+	SuccessfulSlots int
+	FailedSlots     []string // Store "day:slotID" for failed migrations
+}
+
 type MigrationReport struct {
 	ProtocolParams map[string]struct {
 		OldValue string
@@ -240,6 +246,8 @@ type MigrationReport struct {
 		OldValue string
 		NewValue string
 	}
+	EligibleSlotStats map[string]*SlotMigrationStats // key is day
+	SubmissionStats   map[string]*SlotMigrationStats // key is day
 }
 
 // MigrateDataMarketState handles the migration of Redis state from old to new data market address
@@ -259,6 +267,7 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 		redis.GetDailySnapshotQuotaTableKey(),
 	}
 
+	// copy protocol parameters
 	for _, key := range protocolParams {
 		value, err := redis.RedisClient.HGet(ctx, key, oldAddr.Hex()).Result()
 		if err == nil {
@@ -293,8 +302,11 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 			if err != nil {
 				return err
 			}
+			// Only store mismatched values in the report
 			newValue, _ := redis.RedisClient.Get(ctx, newKey).Result()
-			report.KeyValues[newKey] = struct{ OldValue, NewValue string }{oldValue, newValue}
+			if oldValue != newValue {
+				report.KeyValues[newKey] = struct{ OldValue, NewValue string }{oldValue, newValue}
+			}
 		}
 		return nil
 	}
@@ -316,7 +328,6 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 
 	// Track day-based migrations
 	currentDay, _ := redis.Get(ctx, redis.GetCurrentDayKey(oldAddr.Hex()))
-	lastKnownDay, _ := redis.Get(ctx, redis.LastKnownDay(oldAddr.Hex()))
 
 	if err := trackKeyMigration(
 		redis.GetCurrentDayKey(oldAddr.Hex()),
@@ -334,15 +345,101 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 
 	// Process day-based data
 	currentDayInt, _ := strconv.Atoi(currentDay)
-	lastKnownDayInt, _ := strconv.Atoi(lastKnownDay)
 
-	for day := lastKnownDayInt; day <= currentDayInt; day++ {
+	// Calculate the starting day based on configuration
+	startDay := max(1, currentDayInt-(config.SettingsObj.DataMarketMigration.DaysToMigrate-1))
+	log.Infof("Migrating slot data for days %d to %d", startDay, currentDayInt)
+
+	for day := currentDayInt; day >= startDay; day-- {
 		dayStr := strconv.Itoa(day)
 		if err := trackSetMigration(
 			redis.EligibleNodesByDayKey(oldAddr.Hex(), dayStr),
 			redis.EligibleNodesByDayKey(newAddr.Hex(), dayStr),
 		); err != nil {
 			log.Error(err)
+		}
+	}
+
+	// get total nodes count
+	totalNodesCountStr, err := redis.RedisClient.Get(ctx, redis.TotalNodesCountKey()).Result()
+	if err != nil {
+		log.Error(err)
+	}
+	totalNodesCount, err := strconv.Atoi(totalNodesCountStr)
+	if err != nil {
+		log.Error(err)
+	}
+
+	// Modify the slot migration sections to use statistics
+	eligibleSlotStats := make(map[string]*SlotMigrationStats)
+	submissionStats := make(map[string]*SlotMigrationStats)
+
+	// copy over eligible slot submissions by day by slot ID
+	for day := currentDayInt; day >= startDay; day-- {
+		dayStr := strconv.Itoa(day)
+		stats := &SlotMigrationStats{TotalSlots: totalNodesCount}
+		eligibleSlotStats[dayStr] = stats
+
+		for slotID := 1; slotID <= totalNodesCount; slotID++ {
+			slotIDStr := strconv.Itoa(slotID)
+			if err := trackKeyMigration(
+				redis.EligibleSlotSubmissionKey(oldAddr.Hex(), slotIDStr, dayStr),
+				redis.EligibleSlotSubmissionKey(newAddr.Hex(), slotIDStr, dayStr),
+			); err != nil {
+				stats.FailedSlots = append(stats.FailedSlots, fmt.Sprintf("%s:%s", dayStr, slotIDStr))
+			} else {
+				stats.SuccessfulSlots++
+			}
+		}
+	}
+
+	// copy over total submissions by day by slot ID
+	for day := currentDayInt; day >= startDay; day-- {
+		dayStr := strconv.Itoa(day)
+		stats := &SlotMigrationStats{TotalSlots: totalNodesCount}
+		submissionStats[dayStr] = stats
+
+		for slotID := 1; slotID <= totalNodesCount; slotID++ {
+			slotIDStr := strconv.Itoa(slotID)
+			if err := trackKeyMigration(
+				redis.SlotSubmissionKey(oldAddr.Hex(), slotIDStr, dayStr),
+				redis.SlotSubmissionKey(newAddr.Hex(), slotIDStr, dayStr),
+			); err != nil {
+				stats.FailedSlots = append(stats.FailedSlots, fmt.Sprintf("%s:%s", dayStr, slotIDStr))
+			} else {
+				stats.SuccessfulSlots++
+			}
+		}
+	}
+
+	report.EligibleSlotStats = eligibleSlotStats
+	report.SubmissionStats = submissionStats
+
+	// Update the report printing section to include slot statistics
+	log.Info("Slot Migration Statistics:")
+	log.Info("Eligible Slot Migrations:")
+	for day, stats := range report.EligibleSlotStats {
+		log.Infof("  Day %s: %d/%d successful", day, stats.SuccessfulSlots, stats.TotalSlots)
+		if len(stats.FailedSlots) > 0 {
+			log.Warnf("    ⚠️ Failed migrations: %d slots", len(stats.FailedSlots))
+			if len(stats.FailedSlots) <= 10 {
+				log.Warnf("    Failed slots: %v", stats.FailedSlots)
+			} else {
+				log.Warnf("    First 10 failed slots: %v...", stats.FailedSlots[:10])
+			}
+		}
+	}
+
+	log.Info("Submission Migrations:")
+	for day, stats := range report.SubmissionStats {
+		log.Infof("  Day %s: %d/%d successful", day, stats.SuccessfulSlots, stats.TotalSlots)
+		if len(stats.FailedSlots) > 0 {
+			log.Warnf("    ⚠️ Failed migrations: %d slots", len(stats.FailedSlots))
+			if len(stats.FailedSlots) <= 10 {
+				log.Warnf("    Failed slots: %v", stats.FailedSlots)
+			} else {
+				log.Warnf("    First 10 failed slots: %v...", stats.FailedSlots[:10])
+			}
 		}
 	}
 
@@ -371,14 +468,16 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 		}
 	}
 
-	log.Info("Key-Value Pairs:")
-	for key, values := range report.KeyValues {
-		log.Infof("  %s:", key)
-		log.Infof("    Old: %s", values.OldValue)
-		log.Infof("    New: %s", values.NewValue)
-		if values.OldValue != values.NewValue {
-			log.Warnf("    ⚠️ Values don't match for key %s", key)
+	// Modify the Key-Value Pairs section of the report to only show mismatches
+	if len(report.KeyValues) > 0 {
+		log.Info("Key-Value Pair Mismatches:")
+		for key, values := range report.KeyValues {
+			log.Warnf("  ⚠️ Mismatch in %s:", key)
+			log.Warnf("    Old: %s", values.OldValue)
+			log.Warnf("    New: %s", values.NewValue)
 		}
+	} else {
+		log.Info("All key-value pairs migrated successfully")
 	}
 
 	return nil
