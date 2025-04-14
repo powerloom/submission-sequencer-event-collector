@@ -332,6 +332,8 @@ definitions:
         type: string
       slotID:
         type: integer
+      snapshotterAddress:
+        type: string
       token:
         type: string
     type: object
@@ -350,8 +352,6 @@ definitions:
         type: string
       slotID:
         type: integer
-      snapshotterAddress:
-        type: string
       token:
         type: string
     type: object
@@ -741,7 +741,7 @@ paths:
       consumes:
       - application/json
       description: Retrieves the version of a snapshotter node for a given data market
-        address, snapshotter address and slotID
+        address and slotID
       parameters:
       - description: Snapshotter node version request payload
         in: body

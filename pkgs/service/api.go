@@ -57,9 +57,10 @@ type DailySubmissions struct {
 }
 
 type SlotIDInDataMarketRequest struct {
-	Token             string `json:"token"`
-	DataMarketAddress string `json:"dataMarketAddress"`
-	SlotID            int    `json:"slotID"`
+	Token              string `json:"token"`
+	DataMarketAddress  string `json:"dataMarketAddress"`
+	SnapshotterAddress string `json:"snapshotterAddress"`
+	SlotID             int    `json:"slotID"`
 }
 
 type EpochDataMarketRequest struct {
@@ -187,10 +188,9 @@ type Response[K any] struct {
 }
 
 type SnapshotterNodeVersionRequest struct {
-	Token              string `json:"token"`
-	DataMarketAddress  string `json:"dataMarketAddress"`
-	SnapshotterAddress string `json:"snapshotterAddress"`
-	SlotID             int    `json:"slotID"`
+	Token             string `json:"token"`
+	DataMarketAddress string `json:"dataMarketAddress"`
+	SlotID            int    `json:"slotID"`
 }
 
 type SubmissionInfo struct {
@@ -1178,7 +1178,7 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 	lastSimulatedSubmissionTime := time.Unix(timestamp, 0).Format(time.RFC3339)
 
 	// Fetch the node version
-	nodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
+	nodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
 	nodeVersion, err := redis.Get(r.Context(), nodeVersionKey)
 	if err != nil || nodeVersion == "" {
 		nodeVersion = "v0.0.0"
@@ -1265,7 +1265,7 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 	lastSnapshotSubmissionTime := time.Unix(timestamp, 0).Format(time.RFC3339)
 
 	// Fetch the node version
-	nodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
+	nodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
 	nodeVersion, err := redis.Get(r.Context(), nodeVersionKey)
 	if err != nil || nodeVersion == "" {
 		nodeVersion = "v0.0.0"
@@ -1363,7 +1363,7 @@ func handleActiveNodesCountByEpoch(w http.ResponseWriter, r *http.Request) {
 
 // handleSnapshotterNodeVersion godoc
 // @Summary Get snapshotter node version
-// @Description Retrieves the version of a snapshotter node for a given data market address, snapshotter address and slotID
+// @Description Retrieves the version of a snapshotter node for a given data market address and slotID
 // @Tags Submissions
 // @Accept json
 // @Produce json
@@ -1405,7 +1405,7 @@ func handleSnapshotterNodeVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch the snapshotter node version from Redis
-	snapshotterNodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, request.SnapshotterAddress, big.NewInt(int64(request.SlotID)))
+	snapshotterNodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
 	nodeVersion, err := redis.Get(r.Context(), snapshotterNodeVersionKey)
 	if err != nil || nodeVersion == "" {
 		http.Error(w, "Failed to fetch snapshotter node version", http.StatusInternalServerError)
