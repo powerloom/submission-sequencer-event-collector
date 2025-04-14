@@ -2,9 +2,14 @@ package redis
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 	"submission-sequencer-collector/pkgs"
 )
+
+func GetSnapshotterNodeVersion(dataMarketAddress string, slotID *big.Int) string {
+	return fmt.Sprintf("snapshotter:%s:%d:node_version", strings.ToLower(dataMarketAddress), slotID)
+}
 
 func GetDaySizeTableKey() string {
 	return pkgs.DaySizeTableKey

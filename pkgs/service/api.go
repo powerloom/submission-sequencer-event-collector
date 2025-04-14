@@ -57,9 +57,10 @@ type DailySubmissions struct {
 }
 
 type SlotIDInDataMarketRequest struct {
-	Token             string `json:"token"`
-	DataMarketAddress string `json:"dataMarketAddress"`
-	SlotID            int    `json:"slotID"`
+	Token              string `json:"token"`
+	DataMarketAddress  string `json:"dataMarketAddress"`
+	SnapshotterAddress string `json:"snapshotterAddress"`
+	SlotID             int    `json:"slotID"`
 }
 
 type EpochDataMarketRequest struct {
@@ -184,6 +185,17 @@ type ResponseArray[K any] []K
 type Response[K any] struct {
 	Info      InfoType[K] `json:"info"`
 	RequestID string      `json:"requestID"`
+}
+
+type SnapshotterNodeVersionRequest struct {
+	Token             string `json:"token"`
+	DataMarketAddress string `json:"dataMarketAddress"`
+	SlotID            int    `json:"slotID"`
+}
+
+type SubmissionInfo struct {
+	Timestamp   string `json:"timestamp"`
+	NodeVersion string `json:"nodeVersion"`
 }
 
 func getDailyTotalSubmission(ctx context.Context, dataMarketAddress string, slotID int, day *big.Int) int64 {
@@ -1113,7 +1125,7 @@ func handleDiscardedSubmissionsByDay(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Produce json
 // @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
-// @Success 200 {object} Response[string]
+// @Success 200 {object} Response[SubmissionInfo]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last simulated submission"
@@ -1165,12 +1177,22 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 	lastSimulatedSubmissionTime := time.Unix(timestamp, 0).Format(time.RFC3339)
 
-	info := InfoType[string]{
-		Success:  true,
-		Response: lastSimulatedSubmissionTime,
+	// Fetch the node version
+	nodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
+	nodeVersion, err := redis.Get(r.Context(), nodeVersionKey)
+	if err != nil || nodeVersion == "" {
+		nodeVersion = "v0.0.0"
 	}
 
-	response := Response[string]{
+	info := InfoType[SubmissionInfo]{
+		Success: true,
+		Response: SubmissionInfo{
+			Timestamp:   lastSimulatedSubmissionTime,
+			NodeVersion: nodeVersion,
+		},
+	}
+
+	response := Response[SubmissionInfo]{
 		Info:      info,
 		RequestID: r.Context().Value("request_id").(string),
 	}
@@ -1190,7 +1212,7 @@ func handleLastSimulatedSubmission(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Produce json
 // @Param request body SlotIDInDataMarketRequest true "Data market address and slotID request payload"
-// @Success 200 {object} Response[string]
+// @Success 200 {object} Response[SubmissionInfo]
 // @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
 // @Failure 401 {string} string "Unauthorized: Incorrect token"
 // @Failure 500 {string} string "Internal Server Error: Failed to fetch last snapshot submission"
@@ -1242,12 +1264,22 @@ func handleLastSnapshotSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 	lastSnapshotSubmissionTime := time.Unix(timestamp, 0).Format(time.RFC3339)
 
-	info := InfoType[string]{
-		Success:  true,
-		Response: lastSnapshotSubmissionTime,
+	// Fetch the node version
+	nodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
+	nodeVersion, err := redis.Get(r.Context(), nodeVersionKey)
+	if err != nil || nodeVersion == "" {
+		nodeVersion = "v0.0.0"
 	}
 
-	response := Response[string]{
+	info := InfoType[SubmissionInfo]{
+		Success: true,
+		Response: SubmissionInfo{
+			Timestamp:   lastSnapshotSubmissionTime,
+			NodeVersion: nodeVersion,
+		},
+	}
+
+	response := Response[SubmissionInfo]{
 		Info:      info,
 		RequestID: r.Context().Value("request_id").(string),
 	}
@@ -1329,6 +1361,75 @@ func handleActiveNodesCountByEpoch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleSnapshotterNodeVersion godoc
+// @Summary Get snapshotter node version
+// @Description Retrieves the version of a snapshotter node for a given data market address and slotID
+// @Tags Submissions
+// @Accept json
+// @Produce json
+// @Param request body SnapshotterNodeVersionRequest true "Snapshotter node version request payload"
+// @Success 200 {object} Response[string]
+// @Failure 400 {string} string "Bad Request: Invalid input parameters (e.g., invalid slotID or invalid data market address)"
+// @Failure 401 {string} string "Unauthorized: Incorrect token"
+// @Failure 500 {string} string "Internal Server Error: Failed to fetch snapshotter node version"
+// @Router /snapshotterNodeVersion [post]
+func handleSnapshotterNodeVersion(w http.ResponseWriter, r *http.Request) {
+	var request SnapshotterNodeVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.Token != config.SettingsObj.AuthReadToken {
+		http.Error(w, "Incorrect Token!", http.StatusUnauthorized)
+		return
+	}
+
+	isValid := false
+	for _, dataMarketAddress := range config.SettingsObj.DataMarketAddresses {
+		if request.DataMarketAddress == dataMarketAddress {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		http.Error(w, "Invalid Data Market Address!", http.StatusBadRequest)
+		return
+	}
+
+	slotID := request.SlotID
+	if slotID < 1 || slotID > 10000 {
+		http.Error(w, fmt.Sprintf("Invalid slotID: %d", slotID), http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the snapshotter node version from Redis
+	snapshotterNodeVersionKey := redis.GetSnapshotterNodeVersion(request.DataMarketAddress, big.NewInt(int64(request.SlotID)))
+	nodeVersion, err := redis.Get(r.Context(), snapshotterNodeVersionKey)
+	if err != nil || nodeVersion == "" {
+		http.Error(w, "Failed to fetch snapshotter node version", http.StatusInternalServerError)
+		return
+	}
+
+	info := InfoType[string]{
+		Success:  true,
+		Response: nodeVersion,
+	}
+
+	response := Response[string]{
+		Info:      info,
+		RequestID: r.Context().Value("request_id").(string),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func RequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.New().String()
@@ -1379,6 +1480,7 @@ func StartApiServer() {
 	mux.HandleFunc("/lastSimulatedSubmission", handleLastSimulatedSubmission)
 	mux.HandleFunc("/lastSnapshotSubmission", handleLastSnapshotSubmission)
 	mux.HandleFunc("/activeNodesCountByEpoch", handleActiveNodesCountByEpoch)
+	mux.HandleFunc("/snapshotterNodeVersion", handleSnapshotterNodeVersion)
 
 	// Enable CORS with specific settings
 	corsHandler := handlers.CORS(

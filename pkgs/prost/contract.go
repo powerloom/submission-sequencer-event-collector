@@ -328,7 +328,6 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 
 	// Track day-based migrations
 	currentDay, _ := redis.Get(ctx, redis.GetCurrentDayKey(oldAddr.Hex()))
-	lastKnownDay, _ := redis.Get(ctx, redis.LastKnownDay(oldAddr.Hex()))
 
 	if err := trackKeyMigration(
 		redis.GetCurrentDayKey(oldAddr.Hex()),
@@ -346,9 +345,12 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 
 	// Process day-based data
 	currentDayInt, _ := strconv.Atoi(currentDay)
-	lastKnownDayInt, _ := strconv.Atoi(lastKnownDay)
 
-	for day := lastKnownDayInt; day <= currentDayInt; day++ {
+	// Calculate the starting day based on configuration
+	startDay := max(1, currentDayInt-(config.SettingsObj.DataMarketMigration.DaysToMigrate-1))
+	log.Infof("Migrating slot data for days %d to %d", startDay, currentDayInt)
+
+	for day := currentDayInt; day >= startDay; day-- {
 		dayStr := strconv.Itoa(day)
 		if err := trackSetMigration(
 			redis.EligibleNodesByDayKey(oldAddr.Hex(), dayStr),
@@ -371,14 +373,6 @@ func MigrateDataMarketState(ctx context.Context, oldAddr, newAddr common.Address
 	// Modify the slot migration sections to use statistics
 	eligibleSlotStats := make(map[string]*SlotMigrationStats)
 	submissionStats := make(map[string]*SlotMigrationStats)
-
-	// Calculate the starting day based on configuration
-
-	startDay := currentDayInt - (config.SettingsObj.DataMarketMigration.DaysToMigrate - 1)
-	if startDay < 1 {
-		startDay = 1
-	}
-	log.Infof("Migrating slot data for days %d to %d", startDay, currentDayInt)
 
 	// copy over eligible slot submissions by day by slot ID
 	for day := currentDayInt; day >= startDay; day-- {
