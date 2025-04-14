@@ -512,7 +512,7 @@ const docTemplate = `{
         },
         "/snapshotterNodeVersion": {
             "post": {
-                "description": "Retrieves the version of a snapshotter node for a given data market address, snapshotter address and slotID",
+                "description": "Retrieves the version of a snapshotter node for a given data market address and slotID",
                 "consumes": [
                     "application/json"
                 ],
@@ -1128,6 +1128,9 @@ const docTemplate = `{
                 "slotID": {
                     "type": "integer"
                 },
+                "snapshotterAddress": {
+                    "type": "string"
+                },
                 "token": {
                     "type": "string"
                 }
@@ -1155,9 +1158,6 @@ const docTemplate = `{
                 },
                 "slotID": {
                     "type": "integer"
-                },
-                "snapshotterAddress": {
-                    "type": "string"
                 },
                 "token": {
                     "type": "string"
