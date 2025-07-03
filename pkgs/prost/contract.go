@@ -2,10 +2,8 @@ package prost
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"math/big"
-	"net/http"
 	"strconv"
 	"strings"
 	"submission-sequencer-collector/config"
@@ -19,15 +17,15 @@ import (
 	"github.com/cenkalti/backoff"
 	log "github.com/sirupsen/logrus"
 
+	rpchelper "github.com/powerloom/rpc-helper"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var (
-	Client              *ethclient.Client
+	RPCHelper           *rpchelper.RPCHelper
 	Instance            *contract.Contract
 	ContractABI         abi.ABI
 	DataMarketInstances = make(map[string]*dataMarketContract.DataMarketContract)
@@ -35,25 +33,57 @@ var (
 )
 
 func ConfigureClient(ctx context.Context) error {
-	rpcClient, err := rpc.DialOptions(ctx, config.SettingsObj.ClientUrl, rpc.WithHTTPClient(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}))
-	if err != nil {
-		log.Errorf("Failed to connect to client: %s", err)
-		log.Fatal(err)
+	// Create RPC helper configuration
+	rpcConfig := &rpchelper.RPCConfig{
+		Nodes:          make([]rpchelper.NodeConfig, 0),
+		ArchiveNodes:   make([]rpchelper.NodeConfig, 0),
+		MaxRetries:     config.SettingsObj.RPCMaxRetries,
+		RetryDelay:     time.Duration(config.SettingsObj.RPCRetryDelayMs) * time.Millisecond,
+		MaxRetryDelay:  time.Duration(config.SettingsObj.RPCMaxRetryDelayMs) * time.Millisecond,
+		RequestTimeout: time.Duration(config.SettingsObj.RPCRequestTimeoutMs) * time.Millisecond,
 	}
 
-	Client = ethclient.NewClient(rpcClient)
+	// Add regular RPC nodes
+	for _, nodeURL := range config.SettingsObj.RPCNodes {
+		rpcConfig.Nodes = append(rpcConfig.Nodes, rpchelper.NodeConfig{URL: nodeURL})
+	}
+
+	// Add archive RPC nodes if any
+	for _, nodeURL := range config.SettingsObj.ArchiveRPCNodes {
+		rpcConfig.ArchiveNodes = append(rpcConfig.ArchiveNodes, rpchelper.NodeConfig{URL: nodeURL})
+	}
+
+	log.Infof("RPC nodes: %v", rpcConfig.Nodes)
+	log.Infof("Archive RPC nodes: %v", rpcConfig.ArchiveNodes)
+
+	// Create and initialize RPC helper
+	RPCHelper = rpchelper.NewRPCHelper(rpcConfig)
+	if err := RPCHelper.Initialize(ctx); err != nil {
+		log.Errorf("Failed to initialize RPC helper: %s", err)
+		return err
+	}
+
+	log.Infof("Successfully initialized RPC helper with %d nodes and %d archive nodes",
+		len(config.SettingsObj.RPCNodes), len(config.SettingsObj.ArchiveRPCNodes))
 	return nil
 }
 
 func ConfigureContractInstance(ctx context.Context) error {
 	var err error
-	Instance, err = contract.NewContract(common.HexToAddress(config.SettingsObj.ContractAddress), Client)
+
+	// Create contract backend from RPC helper
+	contractBackend := RPCHelper.NewContractBackend()
+
+	log.Infof("Contract address: %s", config.SettingsObj.ContractAddress)
+
+	Instance, err = contract.NewContract(common.HexToAddress(config.SettingsObj.ContractAddress), contractBackend)
 	if err != nil {
 		return err
 	}
 
 	for _, dataMarketContractAddr := range config.SettingsObj.DataMarketContractAddresses {
-		DataMarketInstance, err := dataMarketContract.NewDataMarketContract(dataMarketContractAddr, Client)
+		log.Infof("Data market contract address: %s", dataMarketContractAddr.Hex())
+		DataMarketInstance, err := dataMarketContract.NewDataMarketContract(dataMarketContractAddr, contractBackend)
 		if err != nil {
 			return err
 		}
@@ -103,9 +133,55 @@ func MustQuery[T any](parentCtx context.Context, queryFn func() (T, error)) (T, 
 }
 
 func LoadContractStateVariables(ctx context.Context) error {
+	log.Infof("Starting to load contract state variables...")
+
+	// Debug: Check RPC helper connectivity
+	currentBlock, err := RPCHelper.BlockNumber(ctx)
+	if err != nil {
+		log.Errorf("Failed to get current block number: %v", err)
+		return fmt.Errorf("RPC helper not working: %w", err)
+	}
+	log.Infof("Successfully connected to RPC. Current block: %d", currentBlock)
+
+	// Debug: Check network ID to ensure we're on the right network
+	networkID, err := RPCHelper.JSONRPCCall(ctx, "net_version")
+	if err != nil {
+		log.Warnf("Could not get network ID: %v", err)
+	} else {
+		log.Infof("Connected to network ID: %s", string(networkID))
+	}
+
+	// Debug: Check the main protocol state contract
+	protocolContractAddr := config.SettingsObj.ContractAddress
+	log.Infof("Checking protocol state contract at: %s", protocolContractAddr)
+	protocolCode, err := RPCHelper.JSONRPCCall(ctx, "eth_getCode", protocolContractAddr, "latest")
+	if err != nil {
+		log.Errorf("Failed to get protocol contract code: %v", err)
+		return fmt.Errorf("cannot verify protocol contract: %w", err)
+	} else if string(protocolCode) == "\"0x\"" || string(protocolCode) == "0x" {
+		log.Errorf("No contract code found at protocol contract address %s. Code response: %s", protocolContractAddr, string(protocolCode))
+		return fmt.Errorf("protocol contract not deployed at %s", protocolContractAddr)
+	} else {
+		log.Infof("Protocol contract code exists at %s (length: %d bytes)", protocolContractAddr, len(string(protocolCode)))
+	}
+
 	// Iterate over each data market contract address in the config
 	for _, dataMarketAddress := range config.SettingsObj.DataMarketContractAddresses {
+		log.Infof("Loading state variables for data market: %s", dataMarketAddress.Hex())
+
+		// Debug: Check if there's code at the contract address
+		code, err := RPCHelper.JSONRPCCall(ctx, "eth_getCode", dataMarketAddress.Hex(), "latest")
+		if err != nil {
+			log.Errorf("Failed to get contract code for %s: %v", dataMarketAddress.Hex(), err)
+		} else if string(code) == "\"0x\"" || string(code) == "0x" {
+			log.Errorf("No contract code found at address %s. Code response: %s", dataMarketAddress.Hex(), string(code))
+			continue
+		} else {
+			log.Infof("Contract code exists at %s (length: %d bytes)", dataMarketAddress.Hex(), len(string(code)))
+		}
+
 		// Fetch snapshot submission limit for the current data market address
+		log.Infof("Calling SnapshotSubmissionWindow for %s", dataMarketAddress.Hex())
 		if output, err := MustQuery(ctx, func() (*big.Int, error) {
 			return Instance.SnapshotSubmissionWindow(&bind.CallOpts{}, dataMarketAddress)
 		}); err == nil {
