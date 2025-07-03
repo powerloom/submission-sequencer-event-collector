@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/ethereum/go-ethereum v1.14.7
 	github.com/gorilla/handlers v1.5.2
+	github.com/powerloom/rpc-helper v0.0.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 	github.com/swaggo/swag v1.16.4
@@ -14,6 +15,7 @@ require (
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
+	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
