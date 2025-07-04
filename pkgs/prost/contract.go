@@ -33,38 +33,27 @@ var (
 )
 
 func ConfigureClient(ctx context.Context) error {
-	// Create RPC helper configuration
-	rpcConfig := &rpchelper.RPCConfig{
-		Nodes:          make([]rpchelper.NodeConfig, 0),
-		ArchiveNodes:   make([]rpchelper.NodeConfig, 0),
-		MaxRetries:     config.SettingsObj.RPCMaxRetries,
-		RetryDelay:     time.Duration(config.SettingsObj.RPCRetryDelayMs) * time.Millisecond,
-		MaxRetryDelay:  time.Duration(config.SettingsObj.RPCMaxRetryDelayMs) * time.Millisecond,
-		RequestTimeout: time.Duration(config.SettingsObj.RPCRequestTimeoutMs) * time.Millisecond,
-	}
-
-	// Add regular RPC nodes
-	for _, nodeURL := range config.SettingsObj.RPCNodes {
-		rpcConfig.Nodes = append(rpcConfig.Nodes, rpchelper.NodeConfig{URL: nodeURL})
-	}
-
-	// Add archive RPC nodes if any
-	for _, nodeURL := range config.SettingsObj.ArchiveRPCNodes {
-		rpcConfig.ArchiveNodes = append(rpcConfig.ArchiveNodes, rpchelper.NodeConfig{URL: nodeURL})
-	}
+	// Create RPC helper configuration using the ToRPCConfig method
+	rpcConfig := config.SettingsObj.ToRPCConfig()
+	RPCHelper = rpchelper.NewRPCHelper(rpcConfig)
 
 	log.Infof("RPC nodes: %v", rpcConfig.Nodes)
 	log.Infof("Archive RPC nodes: %v", rpcConfig.ArchiveNodes)
 
-	// Create and initialize RPC helper
-	RPCHelper = rpchelper.NewRPCHelper(rpcConfig)
 	if err := RPCHelper.Initialize(ctx); err != nil {
 		log.Errorf("Failed to initialize RPC helper: %s", err)
-		return err
+
+		// Give the alert processor time to send webhooks before terminating
+		if rpcConfig.WebhookConfig != nil {
+			log.Info("Waiting for alert notifications to be sent...")
+			time.Sleep(5 * time.Second)
+		}
+
+		log.Fatal(err)
 	}
 
 	log.Infof("Successfully initialized RPC helper with %d nodes and %d archive nodes",
-		len(config.SettingsObj.RPCNodes), len(config.SettingsObj.ArchiveRPCNodes))
+		len(rpcConfig.Nodes), len(rpcConfig.ArchiveNodes))
 	return nil
 }
 
