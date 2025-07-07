@@ -113,6 +113,7 @@ func CleanupSubmissionDumpForAllSlots(parentCtx context.Context, dataMarketAddr 
 		log.Errorf("Failed to parse node count %s: %v", nodeCountStr, err)
 		return err
 	}
+	// TODO: remove unnecessary cleanup since this key is not used anymore
 	for slotId := 1; slotId <= nodeCount; slotId++ {
 		log.Debugf("Cleaning up old submission dump for slot %d for data market %s", slotId, dataMarketAddr)
 		keyPattern := fmt.Sprintf("snapshotter:%s:*:%d.slot_submissions", strings.ToLower(dataMarketAddr), slotId)

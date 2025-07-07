@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cenkalti/backoff"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,17 +34,9 @@ func ProcessEvents(ctx context.Context, block *types.Block) error {
 	var logs []types.Log
 	var err error
 
-	operation := func() error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			logs, err = Client.FilterLogs(ctx, filterQuery)
-			return err
-		}
-	}
-
-	if err = backoff.Retry(operation, backoff.WithMaxRetries(backoff.NewConstantBackOff(200*time.Millisecond), 3)); err != nil {
+	// RPC helper already handles retries internally, so we don't need additional retry logic here
+	logs, err = RPCHelper.FilterLogs(ctx, filterQuery)
+	if err != nil {
 		errorMsg := fmt.Sprintf("Error fetching logs for block number %d: %s", block.Number().Int64(), err.Error())
 		clients.SendFailureNotification(pkgs.ProcessEvents, errorMsg, time.Now().String(), "High")
 		log.Error(errorMsg)
