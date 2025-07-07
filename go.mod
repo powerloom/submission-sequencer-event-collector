@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/ethereum/go-ethereum v1.14.7
 	github.com/gorilla/handlers v1.5.2
-	github.com/powerloom/rpc-helper v0.0.0
+	github.com/powerloom/go-rpc-helper v1.0.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 	github.com/swaggo/swag v1.16.4

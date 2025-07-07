@@ -14,7 +14,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	rpchelper "github.com/powerloom/rpc-helper"
+	rpchelper "github.com/powerloom/go-rpc-helper"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
