@@ -1,13 +1,15 @@
 module submission-sequencer-collector
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.4
 
 require (
-	github.com/ethereum/go-ethereum v1.14.7
+	github.com/ethereum/go-ethereum v1.14.13
 	github.com/gorilla/handlers v1.5.2
-	github.com/powerloom/go-rpc-helper v1.0.1
+	github.com/powerloom/go-rpc-helper v1.0.3
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/swag v1.16.4
 	google.golang.org/protobuf v1.34.2
 )
@@ -63,9 +65,9 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.9.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
-	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
