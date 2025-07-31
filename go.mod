@@ -7,7 +7,7 @@ toolchain go1.23.4
 require (
 	github.com/ethereum/go-ethereum v1.16.1
 	github.com/gorilla/handlers v1.5.2
-	github.com/powerloom/go-rpc-helper v1.0.5-0.20250731174712-575c7f4bc102
+	github.com/powerloom/go-rpc-helper v1.0.5-0.20250731182038-925d3a9856fd
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/swag v1.16.4
