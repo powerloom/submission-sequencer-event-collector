@@ -226,10 +226,7 @@ func getDailyTotalSubmission(ctx context.Context, dataMarketAddress string, slot
 
 func getDailyEligibleSubmission(ctx context.Context, dataMarketAddress string, slotID int, day *big.Int) int64 {
 	if val, err := redis.Get(ctx, redis.EligibleSlotSubmissionKey(dataMarketAddress, strconv.Itoa(slotID), day.String())); err != nil || val == "" {
-		subs, err := prost.MustQuery[*big.Int](ctx, func() (*big.Int, error) {
-			subs, err := prost.Instance.SlotSubmissionCount(&bind.CallOpts{}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), day)
-			return subs, err
-		})
+		subs, err := prost.Instance.SlotSubmissionCount(&bind.CallOpts{Context: ctx}, common.HexToAddress(dataMarketAddress), big.NewInt(int64(slotID)), day)
 		if err != nil {
 			log.Errorln("Could not fetch eligible submissions from contract: ", err.Error())
 			return 0

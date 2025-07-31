@@ -161,7 +161,7 @@ func (wm *WindowManager) StartSubmissionWindow(ctx context.Context, dataMarketAd
 				// Get current block number when window expires
 				// Create a new context with timeout for getting block number
 				blockCtx, blockCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				currentBlock, err := Client.BlockNumber(blockCtx)
+				currentBlock, err := RPCHelper.BlockNumber(blockCtx)
 				blockCancel()
 
 				if err != nil {

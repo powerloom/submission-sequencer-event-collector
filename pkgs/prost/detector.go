@@ -43,12 +43,12 @@ func StartFetchingBlocks(ctx context.Context) {
 
 	initFetchCtx, initFetchCancel := context.WithTimeout(ctx, blockFetchTimeout)
 	defer initFetchCancel()
-	header, err := Client.HeaderByNumber(initFetchCtx, nil)
+	currentBlockNumber, err := RPCHelper.BlockNumber(initFetchCtx)
 	if err != nil {
-		log.Errorf("Error fetching latest block header: %s", err)
+		log.Errorf("Error fetching latest block number: %s", err)
 		return
 	}
-	lastProcessedBlock = header.Number.Int64() - 1
+	lastProcessedBlock = int64(currentBlockNumber) - 1
 
 	for {
 		select {
@@ -58,7 +58,7 @@ func StartFetchingBlocks(ctx context.Context) {
 		case <-ticker.C:
 			// Get latest block number using HeaderByNumber(nil)
 			fetchCtx, fetchCancel := context.WithTimeout(ctx, blockFetchTimeout)
-			header, err := Client.HeaderByNumber(fetchCtx, nil)
+			header, err := RPCHelper.HeaderByNumber(fetchCtx, nil)
 			fetchCancel()
 
 			if err != nil {
@@ -157,7 +157,7 @@ func StartFetchingBlocks(ctx context.Context) {
 	}
 }
 
-// fetchBlock retrieves a block from the client using retry logic
+// fetchBlock retrieves a block from the RPC helper using retry logic
 func fetchBlock(ctx context.Context, blockNumber *big.Int) (*types.Block, error) {
 	var block *types.Block
 	operation := func() error {
@@ -166,7 +166,7 @@ func fetchBlock(ctx context.Context, blockNumber *big.Int) (*types.Block, error)
 			return ctx.Err()
 		default:
 			var err error
-			block, err = Client.BlockByNumber(ctx, blockNumber)
+			block, err = RPCHelper.BlockByNumber(ctx, blockNumber)
 			return err
 		}
 	}

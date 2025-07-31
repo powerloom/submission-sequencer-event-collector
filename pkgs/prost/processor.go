@@ -207,17 +207,17 @@ func UpdateSlotSubmissionCount(ctx context.Context, epochID *big.Int, dataMarket
 				instance := DataMarketInstances[dataMarketAddress]
 
 				// Fetch eligible node count from data market contract
-				var count *big.Int
-				if output, err := MustQuery(ctx, func() (*big.Int, error) {
-					return instance.EligibleNodesForDay(&bind.CallOpts{}, dayToCheck)
-				}); err == nil {
-					count = output
-				}
+				count, err := instance.EligibleNodesForDay(&bind.CallOpts{Context: ctx}, dayToCheck)
 
-				// If count is non-zero, break the retry loop
-				if count != nil && count.Uint64() > 0 {
+				// If count is non-zero and no error, break the retry loop
+				if err == nil && count != nil && count.Uint64() > 0 {
 					log.Infof("✅ Contract Query successful: Eligible node count for data market %s on day %s: %d", dataMarketAddress, dayToCheck.String(), count.Uint64())
 					break
+				}
+
+				// Log error if contract call failed
+				if err != nil {
+					log.Errorf("Failed to fetch eligible node count from contract for data market %s on day %s: %v", dataMarketAddress, dayToCheck.String(), err)
 				}
 
 				// Calculate the difference between currentDay and dayToCheck
