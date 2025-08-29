@@ -31,34 +31,35 @@ type Settings struct {
 	RequestTimeoutS int      `json:"request_timeout_s"`
 
 	// Legacy fields (keeping for backward compatibility during transition)
-	ClientUrl                   string
-	ContractAddress             string
-	RedisHost                   string
-	RedisPort                   string
-	RedisDB                     string
-	AuthReadToken               string
-	SlackReportingUrl           string
-	TxRelayerUrl                string
-	TxRelayerAuthWriteToken     string
-	APIHost                     string
-	DataMarketAddresses         []string
-	DataMarketContractAddresses []common.Address
-	BatchSize                   int
-	BlockTime                   int
-	HttpTimeout                 int
-	PeriodicEligibleCountAlerts bool
-	PastDaysBuffer              int
-	RetryLimits                 int
-	RewardsUpdateBatchSize      int
-	RewardsUpdateEpochInterval  int64
-	AttestorQueuePushEnabled    bool
-	InitCleanupEnabled          bool
-	ContractQueryTimeout        int64
-	BlockFetchTimeout           int64
-	EventProcessingTimeout      int64
-	BatchProcessingTimeout      int64
-	MemoryProfilingInterval     int
-	DataMarketMigration         struct {
+	ClientUrl                        string
+	ContractAddress                  string
+	RedisHost                        string
+	RedisPort                        string
+	RedisDB                          string
+	AuthReadToken                    string
+	SlackReportingUrl                string
+	TxRelayerUrl                     string
+	TxRelayerAuthWriteToken          string
+	APIHost                          string
+	DataMarketAddresses              []string
+	DataMarketContractAddresses      []common.Address
+	BatchSize                        int
+	BlockTime                        int
+	HttpTimeout                      int
+	PeriodicEligibleCountAlerts      bool
+	PastDaysBuffer                   int
+	RetryLimits                      int
+	RewardsUpdateBatchSize           int
+	RewardsUpdateEpochInterval       int64
+	AttestorQueuePushEnabled         bool
+	InitCleanupEnabled               bool
+	ConcurrentSubmissionCountUpdates int
+	ContractQueryTimeout             int64
+	BlockFetchTimeout                int64
+	EventProcessingTimeout           int64
+	BatchProcessingTimeout           int64
+	MemoryProfilingInterval          int
+	DataMarketMigration              struct {
 		Enabled       bool
 		Mappings      []DataMarketMigrationEntry
 		DaysToMigrate int
@@ -144,6 +145,11 @@ func LoadConfig() {
 		log.Printf("MARKET_MIGRATION_DAYS must be at least 1, using default of 1")
 		daysToMigrate = 1
 	}
+	concurrentSubmissionCountUpdates, concurrentSubmissionCountUpdatesErr := strconv.Atoi(getEnv("CONCURRENT_SUBMISSION_COUNT_UPDATES", "10"))
+	if concurrentSubmissionCountUpdatesErr != nil {
+		log.Printf("Invalid CONCURRENT_SUBMISSION_COUNT_UPDATES value, using default of 10: %v", concurrentSubmissionCountUpdatesErr)
+		concurrentSubmissionCountUpdates = 10
+	}
 
 	config := Settings{
 		// RPC Helper Configuration
@@ -155,20 +161,21 @@ func LoadConfig() {
 		RequestTimeoutS: getEnvInt("RPC_REQUEST_TIMEOUT_S", 30),
 
 		// Legacy configuration (keeping for backward compatibility)
-		ClientUrl:                   getEnv("PROST_RPC_URL", ""),
-		ContractAddress:             strings.Trim(getEnv("PROTOCOL_STATE_CONTRACT", ""), "\""),
-		RedisHost:                   getEnv("REDIS_HOST", ""),
-		RedisPort:                   getEnv("REDIS_PORT", ""),
-		RedisDB:                     getEnv("REDIS_DB", ""),
-		AuthReadToken:               getEnv("AUTH_READ_TOKEN", ""),
-		SlackReportingUrl:           getEnv("SLACK_REPORTING_URL", ""),
-		TxRelayerUrl:                getEnv("TX_RELAYER_URL", ""),
-		TxRelayerAuthWriteToken:     getEnv("TX_RELAYER_AUTH_WRITE_TOKEN", ""),
-		DataMarketAddresses:         dataMarketAddressesList,
-		PeriodicEligibleCountAlerts: periodicEligibleCountAlerts,
-		APIHost:                     getEnv("API_HOST", ""),
-		AttestorQueuePushEnabled:    attestorQueuePushEnabled,
-		InitCleanupEnabled:          initCleanupEnabled,
+		ClientUrl:                        getEnv("PROST_RPC_URL", ""),
+		ContractAddress:                  strings.Trim(getEnv("PROTOCOL_STATE_CONTRACT", ""), "\""),
+		RedisHost:                        getEnv("REDIS_HOST", ""),
+		RedisPort:                        getEnv("REDIS_PORT", ""),
+		RedisDB:                          getEnv("REDIS_DB", ""),
+		AuthReadToken:                    getEnv("AUTH_READ_TOKEN", ""),
+		SlackReportingUrl:                getEnv("SLACK_REPORTING_URL", ""),
+		TxRelayerUrl:                     getEnv("TX_RELAYER_URL", ""),
+		TxRelayerAuthWriteToken:          getEnv("TX_RELAYER_AUTH_WRITE_TOKEN", ""),
+		DataMarketAddresses:              dataMarketAddressesList,
+		PeriodicEligibleCountAlerts:      periodicEligibleCountAlerts,
+		APIHost:                          getEnv("API_HOST", ""),
+		AttestorQueuePushEnabled:         attestorQueuePushEnabled,
+		InitCleanupEnabled:               initCleanupEnabled,
+		ConcurrentSubmissionCountUpdates: concurrentSubmissionCountUpdates,
 	}
 
 	if config.AuthReadToken == "" {

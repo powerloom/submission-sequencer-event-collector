@@ -642,8 +642,8 @@ func sendFinalRewards(currentEpoch *big.Int) error {
 // this batches reward updates to the relayer
 func asyncBatchArrays(dataMarketAddress, currentDay string, slotIDs, submissionsList []*big.Int, eligibleNodesCount int) {
 	// Create a semaphore to limit concurrent batches
-	batchSemaphore := make(chan struct{}, 5) // Limit to 5 concurrent batches
-	maxBatches := 100                        // Maximum number of batches to process
+	batchSemaphore := make(chan struct{}, config.SettingsObj.ConcurrentSubmissionCountUpdates)
+	maxBatches := 100 // Maximum number of batches to process
 
 	// Create a self-managed goroutine that doesn't block the caller
 	go func() {
